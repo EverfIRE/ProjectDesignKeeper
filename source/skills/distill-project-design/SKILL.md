@@ -48,7 +48,7 @@ Preserve human spans and stable IDs. Never overwrite a hash conflict, restate de
 
 ## Activate a Packaged Runtime
 
-For a marketplace installation, upgrade through Codex with `codex plugin upgrade project-design-keeper`, then open a new task or restart the app. The installable runtime intentionally omits repository development scripts.
+For a marketplace installation, upgrade through Codex with `codex plugin marketplace upgrade project-design-keeper`, then open a new task or restart the app. The installable runtime intentionally omits repository development scripts.
 
 Manual package verification and cache activation are developer-only operations. Run them from the repository's `source/` checkout after reading the release activation section in [workflow.md](references/workflow.md). There, run `npm run package:verify`, then invoke `scripts/activate-installed-plugin.ps1` in one `powershell.exe -NoProfile` process with absolute `-PackageRoot`, `-InstallRoot`, and disposable `-SmokeProject` directories. Package construction and verification are bounded, exact-topology operations whose reads bind identity, size, content, and high-resolution version metadata. The activation script applies a global work deadline, denies concurrent writers while authenticating package files, refuses a matching live Codex `node.exe` MCP child, reports its PID, and never kills it.
 

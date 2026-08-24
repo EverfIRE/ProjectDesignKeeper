@@ -203,7 +203,7 @@ Only after semantic confirmation may the candidate encode `required|preferred` w
 Marketplace users should upgrade through Codex, then start a new task or restart the app:
 
 ```text
-codex plugin upgrade project-design-keeper
+codex plugin marketplace upgrade project-design-keeper
 ```
 
 The installable runtime does not ship repository development scripts. The manual flow below is for plugin developers working from this repository's `source/` checkout. Use a newly created, empty disposable smoke-project directory, verify the exact package first, then activate it with three absolute roots:

@@ -84,6 +84,9 @@ test("release and complete source are separate trees", async () => {
   assert.equal(releasePackage.version, "1.0.0");
   assert.equal(Object.hasOwn(releasePackage, "scripts"), false);
   assert.equal(Object.hasOwn(releasePackage, "devDependencies"), false);
+  const releaseSkill = await readFile(path.join(repoRoot, "plugins", pluginName, "skills", "distill-project-design", "SKILL.md"), "utf8");
+  assert.match(releaseSkill, /codex plugin marketplace upgrade project-design-keeper/u);
+  assert.doesNotMatch(releaseSkill, /codex plugin upgrade project-design-keeper/u);
 });
 
 test("committed release exactly matches the source packager output", async () => {
