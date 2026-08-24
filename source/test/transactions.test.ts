@@ -607,13 +607,13 @@ describe("optimistic concurrency", () => {
     await expectChangesetPairPresent(preview.changesetId);
   });
 
-  test("shares one scan deadline across every multi-output apply revalidation", async () => {
+  test("fails closed when apply source revalidation exhausts the scan deadline", async () => {
     let applying = false;
     const api = await keeper({
-      limits: { scan: { deadlineMs: 150 } },
+      limits: { scan: { deadlineMs: 1_000 } },
       scopeIo: {
         beforeGitCommand: async (args: readonly string[]) => {
-          if (applying && args.includes("--show-toplevel")) await delay(20);
+          if (applying && args.includes("--show-toplevel")) await delay(2_000);
         }
       }
     });
@@ -627,7 +627,7 @@ describe("optimistic concurrency", () => {
     applying = true;
 
     await expect(api.applyUpdate({ root: project().repository, changesetId: preview.changesetId }))
-      .rejects.toThrow(/(?:apply|cold scan).*deadline/i);
+      .rejects.toThrow(/(?:apply|cold scan).*deadline|selected source snapshot is stale/i);
     await expectChangesetPairPresent(preview.changesetId);
   });
 
