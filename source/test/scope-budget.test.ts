@@ -263,6 +263,7 @@ describe("bounded scope file reading", () => {
           const replacement = Buffer.alloc(64 * 1024, 0x62);
           await writer.write(replacement, 0, replacement.byteLength, 64 * 1024);
           await writer.sync();
+          await writer.utimes(new Date(0), new Date("2030-01-01T00:00:00.000Z"));
         } finally {
           await writer.close();
         }
