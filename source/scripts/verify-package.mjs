@@ -126,9 +126,11 @@ async function enumerateExactPackage(directory) {
 }
 
 function normalizedSourceBytes(path, contents) {
-  return textSuffixes.some((suffix) => path.toLowerCase().endsWith(suffix))
-    ? Buffer.from(contents.toString("utf8").replace(/\r\n?/gu, "\n"), "utf8")
-    : contents;
+  if (!textSuffixes.some((suffix) => path.toLowerCase().endsWith(suffix))) return contents;
+  const normalized = contents.toString("utf8").replace(/\r\n?/gu, "\n");
+  if (path !== "package.json") return Buffer.from(normalized, "utf8");
+  const { scripts: _scripts, devDependencies: _devDependencies, ...runtimeManifest } = JSON.parse(normalized);
+  return Buffer.from(`${JSON.stringify(runtimeManifest, null, 2)}\n`, "utf8");
 }
 
 function byteBudget(label) {
@@ -212,6 +214,9 @@ const packageManifest = parseInstalledJson("package.json");
 const mcpManifest = parseInstalledJson(".mcp.json");
 if (pluginManifest.name !== "project-design-keeper" || packageManifest.name !== "project-design-keeper") {
   throw new Error("Package metadata identity must equal project-design-keeper");
+}
+if (Object.hasOwn(packageManifest, "scripts") || Object.hasOwn(packageManifest, "devDependencies")) {
+  throw new Error("Runtime package metadata must not expose unavailable development scripts or dependencies");
 }
 if (pluginManifest.version !== "1.0.0" || packageManifest.version !== "1.0.0") {
   throw new Error("Package metadata versions must both equal 1.0.0");

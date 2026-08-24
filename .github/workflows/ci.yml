@@ -20,14 +20,17 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
       - name: Verify repository distribution
         working-directory: .
         run: node --test test/distribution.test.mjs
-      - run: npm ci
-      - run: npm run typecheck
+      - name: Verify rebuilt runtime is committed in both trees
+        working-directory: .
+        run: git diff --exit-code -- source/dist/index.js plugins/project-design-keeper/dist/index.js
       - run: npm run test:ci
       - run: npm run test:coverage
-      - run: npm run build
       - run: npm run smoke
       - run: npm run test:perf
       - run: npm run package:verify
@@ -203,3 +206,22 @@ jobs:
               }
             }
           }
+
+  portable:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:ci
+      - run: npm run build
+      - run: npm run smoke
+      - run: npm run package:verify

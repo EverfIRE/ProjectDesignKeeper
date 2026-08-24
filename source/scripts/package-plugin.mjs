@@ -175,7 +175,10 @@ function assertSameSnapshot(expected, observed, label) {
 
 function normalizedContents(path, contents) {
   if (!textSuffixes.some((suffix) => path.toLowerCase().endsWith(suffix))) return contents;
-  return Buffer.from(contents.toString("utf8").replace(/\r\n?/gu, "\n"), "utf8");
+  const normalized = contents.toString("utf8").replace(/\r\n?/gu, "\n");
+  if (path !== "package.json") return Buffer.from(normalized, "utf8");
+  const { scripts: _scripts, devDependencies: _devDependencies, ...runtimeManifest } = JSON.parse(normalized);
+  return Buffer.from(`${JSON.stringify(runtimeManifest, null, 2)}\n`, "utf8");
 }
 
 function expectedPackageSnapshot(sourceSnapshot) {

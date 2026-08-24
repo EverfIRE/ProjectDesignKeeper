@@ -200,11 +200,18 @@ Only after semantic confirmation may the candidate encode `required|preferred` w
 
 ## Release activation and stdio reconnection
 
-Use a newly created, empty disposable smoke-project directory. From the release checkout, verify the exact package first, then activate it with three absolute roots:
+Marketplace users should upgrade through Codex, then start a new task or restart the app:
+
+```text
+codex plugin upgrade project-design-keeper
+```
+
+The installable runtime does not ship repository development scripts. The manual flow below is for plugin developers working from this repository's `source/` checkout. Use a newly created, empty disposable smoke-project directory, verify the exact package first, then activate it with three absolute roots:
 
 ```powershell
+cd C:\absolute\ProjectDesignKeeper\source
 npm run package:verify
-powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/activate-installed-plugin.ps1 -PackageRoot C:\absolute\release\.package\project-design-keeper -InstallRoot C:\absolute\plugin-cache\project-design-keeper\1.0.0 -SmokeProject C:\absolute\temporary-smoke-project
+powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/activate-installed-plugin.ps1 -PackageRoot C:\absolute\ProjectDesignKeeper\source\.package\project-design-keeper -InstallRoot C:\absolute\plugin-cache\project-design-keeper\1.0.0 -SmokeProject C:\absolute\temporary-smoke-project
 ```
 
 Packaging captures at most 256 allowlisted entries to depth 16, with a 16 MiB per-file and 64 MiB aggregate budget. It binds reads to file identity plus high-resolution change timestamps, copies only the captured bytes, and re-captures the source before and after publication so a concurrent source change cannot produce a successful mixed-version package. Verification and installed smoke require the exact 25-file topology, cap JSON at 256 KiB, and use the same 16 MiB/64 MiB file budgets.

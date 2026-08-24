@@ -82,6 +82,8 @@ test("release and complete source are separate trees", async () => {
   const releasePackage = await readJSON(`plugins/${pluginName}/package.json`);
   assert.equal(releasePackage.name, pluginName);
   assert.equal(releasePackage.version, "1.0.0");
+  assert.equal(Object.hasOwn(releasePackage, "scripts"), false);
+  assert.equal(Object.hasOwn(releasePackage, "devDependencies"), false);
 });
 
 test("committed release exactly matches the source packager output", async () => {
@@ -129,6 +131,16 @@ test("published plugin metadata uses stable repository URLs", async () => {
   assert.deepEqual(sourcePackage.bugs, { url: `${repositoryURL}/issues` });
 });
 
+test("CI rebuilds the runtime before distribution checks and covers Linux", async () => {
+  const workflow = await readFile(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+  const install = workflow.indexOf("npm ci");
+  const build = workflow.indexOf("npm run build");
+  const distribution = workflow.indexOf("node --test test/distribution.test.mjs");
+  assert.ok(install >= 0 && build > install && distribution > build);
+  assert.match(workflow, /git diff --exit-code -- source\/dist\/index\.js plugins\/project-design-keeper\/dist\/index\.js/u);
+  assert.match(workflow, /runs-on:\s*ubuntu-latest/u);
+});
+
 test("public distribution contains no generated hash suffix", async () => {
   const paths = await repositoryPaths();
   const hashSuffixed = paths.filter((entry) =>
@@ -141,7 +153,7 @@ test("public distribution contains no generated hash suffix", async () => {
     if (!(await stat(absolute)).isFile()) continue;
     const bytes = await readFile(absolute);
     assert.equal(
-      bytes.includes(Buffer.from(archiveHash, "utf8")),
+      bytes.toString("utf8").toLowerCase().includes(archiveHash.toLowerCase()),
       false,
       `${relativePath} contains the generated archive hash`,
     );
