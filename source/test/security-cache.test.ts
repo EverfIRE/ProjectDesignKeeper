@@ -255,7 +255,7 @@ test("refuses recursive cleanup after build-directory identity changes", async (
   );
   const build = await createOwnedBuildDirectory(layout, layout.indexes);
   await rename(build.path, `${build.path}.moved`);
-  await mkdir(build.path);
+  await mkdir(build.path, { mode: 0o700 });
 
   await expect(safeRemoveOwnedBuildDirectory(layout, build)).rejects.toThrow(/identity/i);
 });

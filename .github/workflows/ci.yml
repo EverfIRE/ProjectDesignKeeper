@@ -10,6 +10,9 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
+    env:
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
     defaults:
       run:
         working-directory: source

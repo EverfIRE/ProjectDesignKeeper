@@ -311,7 +311,7 @@ test("revalidates the owned build identity before publishing a scope snapshot", 
   const hooks: ScopeStoreIo = {
     afterShardWrites: async (build) => {
       await rename(build.path, `${build.path}.moved`);
-      await mkdir(build.path);
+      await mkdir(build.path, { mode: 0o700 });
     }
   };
 

@@ -1884,7 +1884,7 @@ describe("deterministic secure scope eviction", () => {
     const projectKey = scopeProjectKey(fixture.projectRoot);
     const cursorScopeKey = scopeCursorKey(fixture.projectRoot, scopePathsKey(["."]));
     const accessDirectory = join(fixture.cacheDirectory, "indexes", "v3", "access", projectKey, cursorScopeKey);
-    await mkdir(accessDirectory, { recursive: true });
+    await mkdir(accessDirectory, { recursive: true, mode: 0o700 });
     const target = join(accessDirectory, `${"a".repeat(64)}.json`);
     let release!: () => void;
     const held = new Promise<void>((accept) => { release = accept; });
@@ -1983,7 +1983,7 @@ describe("deterministic secure scope eviction", () => {
     const projectKey = scopeProjectKey(fixture.projectRoot);
     const cursorScopeKey = scopeCursorKey(fixture.projectRoot, scopePathsKey(["."]));
     const accessDirectory = join(fixture.cacheDirectory, "indexes", "v3", "access", projectKey, cursorScopeKey);
-    await mkdir(accessDirectory, { recursive: true });
+    await mkdir(accessDirectory, { recursive: true, mode: 0o700 });
     const target = join(accessDirectory, `${"c".repeat(64)}.json`);
     const acquired = deferred<void>();
     const releasePublication = deferred<void>();
@@ -2026,7 +2026,7 @@ describe("deterministic secure scope eviction", () => {
     const projectKey = scopeProjectKey(fixture.projectRoot);
     const cursorScopeKey = scopeCursorKey(fixture.projectRoot, scopePathsKey(["."]));
     const accessDirectory = join(fixture.cacheDirectory, "indexes", "v3", "access", projectKey, cursorScopeKey);
-    await mkdir(accessDirectory, { recursive: true });
+    await mkdir(accessDirectory, { recursive: true, mode: 0o700 });
     const target = join(accessDirectory, `${"b".repeat(64)}.json`);
     let release!: () => void;
     const held = new Promise<void>((accept) => { release = accept; });
