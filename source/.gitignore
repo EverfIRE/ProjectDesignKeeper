@@ -1,0 +1,8 @@
+node_modules/
+dist/*
+!dist/index.js
+coverage/
+.package/
+.superpowers/
+.worktrees/
+*.log

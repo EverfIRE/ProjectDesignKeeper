@@ -1,0 +1,18 @@
+{{DERIVED_BLOCK:doc.index BEGIN}}
+# {{PROJECT_NAME}} — Project Design Index
+
+## Scope and revision
+
+- Operation: {{OPERATION}}
+- Scope: {{SCOPE_DESCRIPTION}}
+- Source revision: {{SOURCE_REVISION}}
+- Updated: {{UPDATED_AT}}
+
+## Load routes
+
+Use `query_context` with the current task, path, and module for active verified knowledge. Use `query_history` only for withheld stale/terminal IDs or explicit archive research. Route product/gameplay goals to [intent.md](intent.md), rules to [principles.md](principles.md) and [conventions.md](conventions.md), system structure to [architecture.md](architecture.md), current decisions to [decisions.md](decisions.md), uncertainty to [open-questions.md](open-questions.md), and provenance to [evidence-map.md](evidence-map.md).
+
+## Document map
+
+{{DOCUMENT_LINKS}}
+{{DERIVED_BLOCK:doc.index END}}

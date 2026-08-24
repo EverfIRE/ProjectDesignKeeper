@@ -1,0 +1,9 @@
+{{DERIVED_BLOCK:doc.evidence-map BEGIN}}
+# Evidence Map
+
+## Record provenance
+
+{{RECORD_TO_PATH_LINE_MAP}}
+
+Map every stable record ID to repository-relative typed evidence ranges, excerpt hashes, status, effective confidence, owning document, and invalidated source.
+{{DERIVED_BLOCK:doc.evidence-map END}}

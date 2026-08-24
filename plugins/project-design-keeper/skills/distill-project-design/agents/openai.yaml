@@ -1,0 +1,4 @@
+interface:
+  display_name: "Distill Project Design"
+  short_description: "Distill product and technical design context"
+  default_prompt: "Use $distill-project-design to distill or refresh this project design context."

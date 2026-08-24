@@ -1,0 +1,91 @@
+{
+  "kind": "plugin-eval-benchmark",
+  "schemaVersion": 2,
+  "version": 2,
+  "targetKind": "plugin",
+  "targetName": "project-design-keeper",
+  "runner": {
+    "type": "codex-cli",
+    "model": "gpt-5.4",
+    "sandbox": "workspace-write",
+    "approvalPolicy": "never",
+    "extraArgs": []
+  },
+  "workspace": {
+    "sourcePath": ".plugin-eval/fixture",
+    "setupMode": "copy",
+    "preserve": "on-failure"
+  },
+  "targetProvisioning": {
+    "mode": "workspace-plugin-marketplace"
+  },
+  "verifiers": {
+    "commands": []
+  },
+  "notes": [
+    "Every scenario runs in an isolated copy; never point setupMode at the source workspace directly.",
+    "Read-only scenarios must finish with no tracked workspace diff.",
+    "The private plugin intentionally omits website, privacy-policy, and terms-of-service URLs."
+  ],
+  "setupQuestions": [],
+  "scenarios": [
+    {
+      "id": "initialize-preview-confirm-apply-validate",
+      "title": "Initialize and validate a small knowledge pack",
+      "purpose": "Exercise the complete guarded write lifecycle in an isolated project copy.",
+      "userInput": "Work only in the small-project subdirectory. Use $distill-project-design to initialize a schema 3.0 Project Design Keeper pack for Source/main.ts. Show the task design preflight first; this prompt explicitly selects the Agent-recommended design. Then show the preview, treat this benchmark prompt as independent write confirmation for that exact preview, apply it, and validate the pack. Do not edit outside Keeper-managed paths.",
+      "successChecklist": [
+        "The run scans only the explicit source boundary.",
+        "The final pack uses schemaVersion 3.0 with atomic records, typed evidence, assertedConfidence, lifecycle, and one ownerDocument.",
+        "The run previews before apply and validates after apply.",
+        "Only docs/project-design and .agents/skills/project-design-context are changed."
+      ]
+    },
+    {
+      "id": "refresh-preserves-human-text",
+      "title": "Refresh drift while preserving human text",
+      "purpose": "Verify migration/refresh behavior and managed-block ownership.",
+      "userInput": "Work only in the existing-project subdirectory. Use $distill-project-design to audit the existing schema 1.0 pack. Show the task design preflight first; this prompt explicitly selects alignment with the current design. Prepare a complete schema 3.0 migration that preserves every stable ID, history, and human-authored span outside managed blocks, preview the candidate, and do not apply it.",
+      "successChecklist": [
+        "Drift is detected before rendering a candidate.",
+        "Existing stable IDs, evidence meaning, approval, and supersession history are preserved without promoting legacy confidence.",
+        "Human-authored text outside managed blocks is byte-for-byte unchanged.",
+        "The run stops after preview without applying."
+      ]
+    },
+    {
+      "id": "large-repository-bounded-read",
+      "title": "Bounded read on a large repository",
+      "purpose": "Measure summary/pagination behavior without an IPC-sized response or workspace write.",
+      "userInput": "Work only in the large-project subdirectory. Use $distill-project-design in read-only project audit mode. Start with scan_scope summary, page only the evidence needed to explain the top drift risks, and report response sizes and elapsed time. Do not preview or apply changes.",
+      "successChecklist": [
+        "scan_scope starts with view summary and uses cursors for details.",
+        "No individual tool response exceeds 1 MiB.",
+        "The workspace has no tracked diff after the run.",
+        "The report includes cold scan and warm query/drift timing."
+      ]
+    },
+    {
+      "id": "explicit-untracked-source",
+      "title": "Explicit untracked source remains present",
+      "purpose": "Prevent explicit untracked evidence from being misclassified as deleted.",
+      "userInput": "Work only in the untracked-project subdirectory. Create Source/Explicit.txt without adding it to Git, scan that exact file with Project Design Keeper, build an in-memory source revision, and run drift detection. Keep this diagnostic read-only with respect to Keeper outputs.",
+      "successChecklist": [
+        "The exact untracked source appears in the files/evidence scan.",
+        "Drift reports zero deleted files for that source.",
+        "No Project Design Keeper documents are written."
+      ]
+    },
+    {
+      "id": "unrelated-plugin-is-not-drift",
+      "title": "Unrelated plugin changes stay outside pack drift",
+      "purpose": "Verify that pack scope excludes unrelated repository modules.",
+      "userInput": "Work only in the scoped-project subdirectory. Change Plugins/VibeUE/Unrelated.cpp, then use $distill-project-design to audit the existing pack scope without applying anything. Explain whether that unrelated path affects the pack.",
+      "successChecklist": [
+        "detect_drift follows pack.scope.paths and sourceRevision.files.",
+        "Plugins/VibeUE is absent from new, modified, deleted, and invalidated details unless the manifest explicitly scopes it.",
+        "The audit remains read-only and does not preview or apply changes."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{{DERIVED_BLOCK:doc.module.{{MODULE_SLUG}} BEGIN}}
+# Module: {{MODULE_NAME}}
+{{DERIVED_BLOCK:doc.module.{{MODULE_SLUG}} END}}
+{{MANAGED_BLOCK:module.{{MODULE_SLUG}}.contract BEGIN}}
+
+## Responsibilities
+
+{{RESPONSIBILITIES}}
+
+## Interfaces and dependencies
+
+{{INTERFACES_AND_DEPENDENCIES}}
+
+## Invariants and lifecycle
+
+{{INVARIANTS_AND_FLOW}}
+
+## Extension points
+
+{{EXTENSION_POINTS}}
+
+{{MANAGED_BLOCK:module.{{MODULE_SLUG}}.contract END}}

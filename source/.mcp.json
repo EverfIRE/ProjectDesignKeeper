@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "project-design-keeper": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "cwd": "."
+    }
+  }
+}

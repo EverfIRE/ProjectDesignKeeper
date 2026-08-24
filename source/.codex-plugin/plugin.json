@@ -1,0 +1,26 @@
+{
+  "name": "project-design-keeper",
+  "version": "1.0.0",
+  "description": "Distill local project evidence into validated design documentation and reusable project context.",
+  "author": {
+    "name": "EverfIRE",
+    "url": "https://github.com/EverfIRE"
+  },
+  "homepage": "https://github.com/EverfIRE/ProjectDesignKeeper",
+  "repository": "https://github.com/EverfIRE/ProjectDesignKeeper",
+  "keywords": ["project-design", "documentation", "knowledge-management", "developer-tools"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Project Design Keeper",
+    "shortDescription": "Distill project design from local evidence.",
+    "longDescription": "Use $distill-project-design to maintain accurate active and archived knowledge from local evidence, generate reusable project context, run task design preflights, and preview confirmed safe updates before applying.",
+    "developerName": "EverfIRE",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/EverfIRE/ProjectDesignKeeper",
+    "defaultPrompt": [
+      "$distill-project-design preflight this task against verified design, then maintain the knowledge pack safely."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

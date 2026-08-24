@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "target": "project-design-keeper",
+  "privatePlugin": true,
+  "exemptions": [
+    {
+      "checkId": "interface-missing-websiteURL",
+      "reason": "Private local plugin; no public project website exists. Do not publish a fabricated URL."
+    },
+    {
+      "checkId": "interface-missing-privacyPolicyURL",
+      "reason": "Private local plugin with no hosted privacy-policy page. Do not publish a fabricated URL."
+    },
+    {
+      "checkId": "interface-missing-termsOfServiceURL",
+      "reason": "Private local plugin with no hosted terms page. Do not publish a fabricated URL."
+    }
+  ]
+}

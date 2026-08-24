@@ -1,0 +1,19 @@
+{{DERIVED_BLOCK:doc.principles BEGIN}}
+# Principles and Habits
+{{DERIVED_BLOCK:doc.principles END}}
+{{MANAGED_BLOCK:doc.principles.catalog BEGIN}}
+
+## Product / gameplay
+
+{{PRODUCT_PRINCIPLES}}
+
+## Technical
+
+{{TECHNICAL_PRINCIPLES}}
+
+## Cross-domain habits
+
+{{CROSS_DOMAIN_HABITS}}
+
+For every item include its stable ID, status, strength, approval, asserted/effective confidence, typed evidence, lifecycle, and impact.
+{{MANAGED_BLOCK:doc.principles.catalog END}}

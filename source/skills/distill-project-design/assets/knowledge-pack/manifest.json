@@ -1,0 +1,37 @@
+{
+  "managedBy": "project-design-keeper",
+  "schemaVersion": "3.0",
+  "maintenanceRevision": 0,
+  "scope": { "root": ".", "paths": ["README.md"] },
+  "sourceRevision": {
+    "kind": "sha256",
+    "files": { "README.md": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }
+  },
+  "documents": [
+    { "id": "doc.index", "path": "docs/project-design/index.md" },
+    { "id": "doc.intent", "path": "docs/project-design/intent.md" },
+    { "id": "doc.principles", "path": "docs/project-design/principles.md" },
+    { "id": "doc.architecture", "path": "docs/project-design/architecture.md" },
+    { "id": "doc.module.example", "path": "docs/project-design/modules/example.md" },
+    { "id": "doc.conventions", "path": "docs/project-design/conventions.md" },
+    { "id": "doc.decisions", "path": "docs/project-design/decisions.md" },
+    { "id": "doc.tuning", "path": "docs/project-design/tuning.md" },
+    { "id": "doc.verification", "path": "docs/project-design/verification.md" },
+    { "id": "doc.open-questions", "path": "docs/project-design/open-questions.md" },
+    { "id": "doc.evidence-map", "path": "docs/project-design/evidence-map.md" }
+  ],
+  "records": [
+    { "id": "doc.intent.core", "kind": "intent", "ownerDocument": "doc.intent", "domain": "product", "scope": "project", "statement": "The intent document captures goals, audience, non-goals, and constraints.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "design", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Implementation remains aligned with project intent."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.principles.catalog", "kind": "principle", "ownerDocument": "doc.principles", "domain": "design", "scope": "project", "statement": "The principles catalog distinguishes confirmed rules from observations.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "design", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Descriptive evidence is not silently promoted."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.architecture.system", "kind": "architecture", "ownerDocument": "doc.architecture", "domain": "technical", "scope": "project", "statement": "The architecture document records boundaries, flows, and integrations.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "implementation", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["System changes preserve known contracts."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "module.example.contract", "kind": "module", "ownerDocument": "doc.module.example", "domain": "module", "scope": "example", "statement": "A module document records responsibilities, interfaces, invariants, and extension points.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "implementation", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Module work has a bounded contract."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.conventions.catalog", "kind": "convention", "ownerDocument": "doc.conventions", "domain": "engineering", "scope": "project", "statement": "The conventions catalog records stable engineering rules.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "implementation", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Later work can follow applicable conventions."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.decisions.log", "kind": "decision", "ownerDocument": "doc.decisions", "domain": "decision", "scope": "project", "statement": "The decision log retains rationale, alternatives, and supersession history.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "design", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Historical decisions remain traceable."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.tuning.catalog", "kind": "tuning", "ownerDocument": "doc.tuning", "domain": "configuration", "scope": "project", "statement": "Mutable defaults and thresholds are separated from stable conventions.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "configuration", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Tuning can evolve without redefining engineering rules."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.verification.catalog", "kind": "verification", "ownerDocument": "doc.verification", "domain": "verification", "scope": "project", "statement": "Verification methods and current results are tracked separately from design rules.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "test", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Current verification remains distinguishable from long-lived intent."], "status": "observed", "strength": "informational", "approval": "not-required", "assertedConfidence": "medium", "lifecycle": { "state": "active" } },
+    { "id": "doc.open-questions.catalog", "kind": "open-question", "ownerDocument": "doc.open-questions", "domain": "risk", "scope": "project", "statement": "Open questions contain only unresolved conflicts, risks, and missing evidence.", "evidence": [{ "path": "README.md", "startLine": 1, "role": "design", "excerptHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" }], "impact": ["Uncertainty remains visible during planning."], "status": "proposed", "strength": "pending", "approval": "pending", "assertedConfidence": "medium", "lifecycle": { "state": "active" } }
+  ],
+  "archive": { "generations": [], "tombstones": { "path": "docs/project-design/archive/tombstones.jsonl", "count": 0 } },
+  "dedupeExceptions": [],
+  "templateNotes": "Replace README.md, its fingerprints, records, typed evidence, and rendered ownership markers with scanned project evidence before preview."
+}

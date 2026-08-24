@@ -1,0 +1,205 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: source/package-lock.json
+      - name: Verify repository distribution
+        working-directory: .
+        run: node --test test/distribution.test.mjs
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:ci
+      - run: npm run test:coverage
+      - run: npm run build
+      - run: npm run smoke
+      - run: npm run test:perf
+      - run: npm run package:verify
+      - name: Smoke installed package from a temporary fixture
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+
+          if (-not ("KeeperCiFixtureNative" -as [type])) {
+            Add-Type -TypeDefinition @"
+          using System;
+          using System.ComponentModel;
+          using System.Globalization;
+          using System.Runtime.InteropServices;
+          using System.Runtime.InteropServices.ComTypes;
+          using Microsoft.Win32.SafeHandles;
+
+          public static class KeeperCiFixtureNative
+          {
+              [StructLayout(LayoutKind.Sequential)]
+              private struct BY_HANDLE_FILE_INFORMATION
+              {
+                  public uint FileAttributes;
+                  public FILETIME CreationTime;
+                  public FILETIME LastAccessTime;
+                  public FILETIME LastWriteTime;
+                  public uint VolumeSerialNumber;
+                  public uint FileSizeHigh;
+                  public uint FileSizeLow;
+                  public uint NumberOfLinks;
+                  public uint FileIndexHigh;
+                  public uint FileIndexLow;
+              }
+
+              [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+              private static extern SafeFileHandle CreateFileW(
+                  string path,
+                  uint desiredAccess,
+                  uint shareMode,
+                  IntPtr securityAttributes,
+                  uint creationDisposition,
+                  uint flagsAndAttributes,
+                  IntPtr templateFile);
+
+              [DllImport("kernel32.dll", SetLastError = true)]
+              private static extern bool GetFileInformationByHandle(
+                  SafeFileHandle handle,
+                  out BY_HANDLE_FILE_INFORMATION information);
+
+              public static string GetDirectoryIdentity(string path)
+              {
+                  const uint FILE_READ_ATTRIBUTES = 0x0080;
+                  const uint FILE_SHARE_READ = 0x00000001;
+                  const uint FILE_SHARE_WRITE = 0x00000002;
+                  const uint FILE_SHARE_DELETE = 0x00000004;
+                  const uint OPEN_EXISTING = 3;
+                  const uint FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000;
+                  const uint FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+                  const uint FILE_ATTRIBUTE_DIRECTORY = 0x00000010;
+                  const uint FILE_ATTRIBUTE_REPARSE_POINT = 0x00000400;
+
+                  using (SafeFileHandle handle = CreateFileW(
+                      path,
+                      FILE_READ_ATTRIBUTES,
+                      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                      IntPtr.Zero,
+                      OPEN_EXISTING,
+                      FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                      IntPtr.Zero))
+                  {
+                      if (handle.IsInvalid)
+                      {
+                          throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to open CI fixture directory without following reparse points");
+                      }
+                      BY_HANDLE_FILE_INFORMATION information;
+                      if (!GetFileInformationByHandle(handle, out information))
+                      {
+                          throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to identify CI fixture directory");
+                      }
+                      if ((information.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+                          (information.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+                      {
+                          throw new InvalidOperationException("CI fixture path must be a non-reparse directory");
+                      }
+                      return string.Format(
+                          CultureInfo.InvariantCulture,
+                          "{0:x8}:{1:x8}:{2:x8}",
+                          information.VolumeSerialNumber,
+                          information.FileIndexHigh,
+                          information.FileIndexLow);
+                  }
+              }
+          }
+          "@
+          }
+
+          function Assert-NoReparsePathComponents {
+            param([string]$Label, [string]$Path)
+            $root = [IO.Path]::GetPathRoot($Path)
+            if ([string]::IsNullOrWhiteSpace($root)) {
+              throw "$Label must be an absolute path"
+            }
+            $current = $root
+            $remainder = $Path.Substring($root.Length)
+            foreach ($component in $remainder.Split([char[]]@('\', '/'), [StringSplitOptions]::RemoveEmptyEntries)) {
+              $current = [IO.Path]::Combine($current, $component)
+              $item = Get-Item -LiteralPath $current -Force
+              if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Label contains a reparse point: $current"
+              }
+            }
+          }
+
+          $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char[]]@('\', '/'))
+          Assert-NoReparsePathComponents -Label 'RUNNER_TEMP' -Path $runnerTemp
+          $fixture = [IO.Path]::GetFullPath((Join-Path $runnerTemp ("keeper-installed-smoke-" + [guid]::NewGuid().ToString('N'))))
+          if (-not [string]::Equals([IO.Path]::GetDirectoryName($fixture), $runnerTemp, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Installed smoke fixture escaped RUNNER_TEMP"
+          }
+          $runnerTempIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($runnerTemp)
+          $fixtureIdentity = $null
+          $smokeSucceeded = $false
+          try {
+            New-Item -ItemType Directory -Path $fixture | Out-Null
+            Assert-NoReparsePathComponents -Label 'CI installed smoke fixture' -Path $fixture
+            $fixtureIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($fixture)
+            npm run smoke:installed -- "${{ github.workspace }}\source\.package\project-design-keeper" "$fixture"
+            if ($LASTEXITCODE -ne 0) { throw "Installed package smoke failed with exit code $LASTEXITCODE" }
+            $smokeSucceeded = $true
+          }
+          finally {
+            if (Test-Path -LiteralPath $fixture) {
+              if (-not $smokeSucceeded) {
+                Write-Warning "Installed smoke failed; preserving evidence at $fixture"
+              }
+              else {
+                if ($null -eq $fixtureIdentity) {
+                  throw "CI installed smoke fixture identity was never captured; preserving the ambiguous path at $fixture"
+                }
+                if (-not [string]::Equals([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($fixture)), $runnerTemp, [StringComparison]::OrdinalIgnoreCase)) {
+                  throw "CI installed smoke fixture no longer has the verified direct parent; preserving $fixture"
+                }
+                Assert-NoReparsePathComponents -Label 'RUNNER_TEMP' -Path $runnerTemp
+                Assert-NoReparsePathComponents -Label 'CI installed smoke fixture' -Path $fixture
+                $currentRunnerTempIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($runnerTemp)
+                if ($currentRunnerTempIdentity -cne $runnerTempIdentity) {
+                  throw "RUNNER_TEMP identity changed before CI fixture cleanup; preserving $fixture"
+                }
+                $currentFixtureIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($fixture)
+                if ($currentFixtureIdentity -cne $fixtureIdentity) {
+                  throw "CI installed smoke fixture identity changed before cleanup; preserving $fixture"
+                }
+                $fixtureEnumerator = [IO.Directory]::EnumerateFileSystemEntries($fixture).GetEnumerator()
+                try {
+                  $fixtureHasEntry = $fixtureEnumerator.MoveNext()
+                }
+                finally {
+                  if ($fixtureEnumerator -is [IDisposable]) { $fixtureEnumerator.Dispose() }
+                }
+                if ($fixtureHasEntry) {
+                  throw "CI installed smoke fixture is not empty after successful smoke; preserving evidence at $fixture"
+                }
+                $currentFixtureIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($fixture)
+                if ($currentFixtureIdentity -cne $fixtureIdentity) {
+                  throw "CI installed smoke fixture identity changed during bounded cleanup validation; preserving $fixture"
+                }
+                $currentRunnerTempIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($runnerTemp)
+                if ($currentRunnerTempIdentity -cne $runnerTempIdentity) {
+                  throw "RUNNER_TEMP identity changed during CI fixture cleanup validation; preserving $fixture"
+                }
+                [IO.Directory]::Delete($fixture, $false)
+              }
+            }
+          }

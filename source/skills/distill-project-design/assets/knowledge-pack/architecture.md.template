@@ -1,0 +1,19 @@
+{{DERIVED_BLOCK:doc.architecture BEGIN}}
+# Architecture
+{{DERIVED_BLOCK:doc.architecture END}}
+{{MANAGED_BLOCK:doc.architecture.system BEGIN}}
+
+## System boundaries
+
+{{BOUNDARIES}}
+
+## Data and control flow
+
+{{FLOWS}}
+
+## Integration points and dependencies
+
+{{INTEGRATIONS}}
+
+Label declared intent, observed implementation, inference, and conflict explicitly.
+{{MANAGED_BLOCK:doc.architecture.system END}}

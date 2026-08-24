@@ -1,0 +1,15 @@
+{{DERIVED_BLOCK:doc.tuning BEGIN}}
+# Tuning
+{{DERIVED_BLOCK:doc.tuning END}}
+{{MANAGED_BLOCK:doc.tuning.catalog BEGIN}}
+
+## Mutable defaults and thresholds
+
+{{TUNABLE_DEFAULTS}}
+
+## Platform or environment variants
+
+{{PLATFORM_VARIANTS}}
+
+Keep tunable values descriptive unless the user confirms them as required constraints.
+{{MANAGED_BLOCK:doc.tuning.catalog END}}

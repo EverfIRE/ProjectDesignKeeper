@@ -1,0 +1,20 @@
+{
+  "name": "project-design-keeper",
+  "interface": {
+    "displayName": "Project Design Keeper"
+  },
+  "plugins": [
+    {
+      "name": "project-design-keeper",
+      "source": {
+        "source": "local",
+        "path": "./plugins/project-design-keeper"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{{DERIVED_BLOCK:doc.archive-index BEGIN}}
+# Knowledge Archive
+
+## Retained generations
+
+{{ARCHIVE_GENERATIONS}}
+
+## Tombstones
+
+{{TOMBSTONE_SUMMARY}}
+
+This document is derived navigation only. Use `query_history` to retrieve historical records.
+{{DERIVED_BLOCK:doc.archive-index END}}

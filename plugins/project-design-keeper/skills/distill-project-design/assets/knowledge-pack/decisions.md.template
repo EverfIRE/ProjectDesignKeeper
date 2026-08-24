@@ -1,0 +1,11 @@
+{{DERIVED_BLOCK:doc.decisions BEGIN}}
+# Decisions
+{{DERIVED_BLOCK:doc.decisions END}}
+{{MANAGED_BLOCK:doc.decisions.log BEGIN}}
+
+## Active and historical decisions
+
+{{DECISION_ENTRIES}}
+
+Each entry includes stable ID, decision, alternatives, rationale, typed evidence, approval, asserted/effective confidence, lifecycle, and supersession history.
+{{MANAGED_BLOCK:doc.decisions.log END}}

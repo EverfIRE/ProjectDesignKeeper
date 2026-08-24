@@ -1,0 +1,17 @@
+{{DERIVED_BLOCK:doc.verification BEGIN}}
+# Verification
+{{DERIVED_BLOCK:doc.verification END}}
+{{MANAGED_BLOCK:doc.verification.catalog BEGIN}}
+
+## Methods
+
+{{VERIFICATION_METHODS}}
+
+## Current results
+
+{{CURRENT_RESULTS}}
+
+## Release checks
+
+{{RELEASE_CHECKS}}
+{{MANAGED_BLOCK:doc.verification.catalog END}}

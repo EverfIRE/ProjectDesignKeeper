@@ -1,0 +1,17 @@
+{{DERIVED_BLOCK:doc.open-questions BEGIN}}
+# Open Questions and Conflicts
+{{DERIVED_BLOCK:doc.open-questions END}}
+{{MANAGED_BLOCK:doc.open-questions.catalog BEGIN}}
+
+## Conflicts and intent–implementation drift
+
+{{CONFLICTS}}
+
+## Pending decisions and missing evidence
+
+{{PENDING_AND_MISSING}}
+
+## Risks
+
+{{RISKS}}
+{{MANAGED_BLOCK:doc.open-questions.catalog END}}

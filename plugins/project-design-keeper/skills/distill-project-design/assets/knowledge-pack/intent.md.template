@@ -1,0 +1,17 @@
+{{DERIVED_BLOCK:doc.intent BEGIN}}
+# Intent
+{{DERIVED_BLOCK:doc.intent END}}
+{{MANAGED_BLOCK:doc.intent.core BEGIN}}
+
+## Product / gameplay goal
+
+{{GOALS_WITH_RECORD_IDS}}
+
+## Design thinking and audience
+
+{{DESIGN_THINKING_AND_AUDIENCE}}
+
+## Non-goals and constraints
+
+{{NON_GOALS_AND_CONSTRAINTS}}
+{{MANAGED_BLOCK:doc.intent.core END}}

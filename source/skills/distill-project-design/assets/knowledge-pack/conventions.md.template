@@ -1,0 +1,19 @@
+{{DERIVED_BLOCK:doc.conventions BEGIN}}
+# Conventions
+{{DERIVED_BLOCK:doc.conventions END}}
+{{MANAGED_BLOCK:doc.conventions.catalog BEGIN}}
+
+## Naming and directories
+
+{{NAMING_AND_LAYOUT}}
+
+## Configuration and errors
+
+{{CONFIGURATION_AND_ERROR_HANDLING}}
+
+## Technical boundaries
+
+{{BOUNDARIES}}
+
+Keep code/test/config findings `observed` and `informational` unless user-confirmed.
+{{MANAGED_BLOCK:doc.conventions.catalog END}}
