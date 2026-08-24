@@ -3057,15 +3057,14 @@ test("rejects an owner rewrite hidden behind consecutive settlement retries", as
   const owned = await claimOwnedSnapshotDirectory(layout, target);
   const fixedTime = new Date("2025-01-01T00:00:00.000Z");
   await utimes(owned.path, fixedTime, fixedTime);
+  const transientLink = join(layout.indexes, `.claim-settlement-${randomUUID()}.tmp`);
   let attempt = 0;
 
   await expect(observeOwnedSnapshotPublicationClaim(layout, target, {
     afterClaimMetadataCapture: async (path) => {
       attempt += 1;
       if (attempt === 1) {
-        const transientLink = join(layout.indexes, `.claim-settlement-${randomUUID()}.tmp`);
         await link(path, transientLink);
-        await rm(transientLink);
         return;
       }
       if (attempt === 2) {
@@ -3073,6 +3072,7 @@ test("rejects an owner rewrite hidden behind consecutive settlement retries", as
         owner.nonce = owner.nonce === "0".repeat(32) ? "1".repeat(32) : "0".repeat(32);
         await writeFile(path, `${JSON.stringify(owner)}\n`, { encoding: "utf8", mode: 0o600 });
         await utimes(path, fixedTime, fixedTime);
+        await rm(transientLink);
       }
     }
   })).rejects.toSatisfy((error: unknown) =>
