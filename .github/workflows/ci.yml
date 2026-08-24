@@ -10,14 +10,16 @@ permissions:
 jobs:
   verify:
     runs-on: windows-latest
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     defaults:
       run:
         working-directory: source
     steps:
       - uses: actions/checkout@v4
+      - name: Use the runner temporary directory for tests
+        shell: pwsh
+        run: |
+          "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
+          "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
       - uses: actions/setup-node@v4
         with:
           node-version: 20
