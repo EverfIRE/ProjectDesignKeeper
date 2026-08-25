@@ -10,13 +10,13 @@ Add this repository as a marketplace source:
 codex plugin marketplace add EverfIRE/ProjectDesignKeeper
 ```
 
-For the immutable `1.0.0` release, pin the marketplace to the release tag:
+For the immutable `1.0.1` release, pin the marketplace to the release tag:
 
 ```powershell
-codex plugin marketplace add EverfIRE/ProjectDesignKeeper --ref v1.0.0
+codex plugin marketplace add EverfIRE/ProjectDesignKeeper --ref v1.0.1
 ```
 
-Restart the ChatGPT desktop app, open the Plugins Directory, select **Project Design Keeper**, and install `project-design-keeper`.
+Restart the ChatGPT desktop app, open the Plugins Directory, select **ProjectDesignKeeper**, and install `project-design-keeper`. After installation, mention `@ProjectDesignKeeper` in the composer to use the plugin, or invoke `$distill-project-design` directly for its knowledge-maintenance workflow.
 
 To inspect or update the marketplace later:
 

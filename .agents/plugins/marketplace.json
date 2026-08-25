@@ -1,7 +1,7 @@
 {
   "name": "project-design-keeper",
   "interface": {
-    "displayName": "Project Design Keeper"
+    "displayName": "ProjectDesignKeeper"
   },
   "plugins": [
     {

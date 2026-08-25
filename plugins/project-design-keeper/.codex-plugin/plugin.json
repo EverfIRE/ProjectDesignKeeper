@@ -1,6 +1,6 @@
 {
   "name": "project-design-keeper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Distill local project evidence into validated design documentation and reusable project context.",
   "author": {
     "name": "EverfIRE",
@@ -11,7 +11,7 @@
   "keywords": ["project-design", "documentation", "knowledge-management", "developer-tools"],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Project Design Keeper",
+    "displayName": "ProjectDesignKeeper",
     "shortDescription": "Distill project design from local evidence.",
     "longDescription": "Use $distill-project-design to maintain accurate active and archived knowledge from local evidence, generate reusable project context, run task design preflights, and preview confirmed safe updates before applying.",
     "developerName": "EverfIRE",

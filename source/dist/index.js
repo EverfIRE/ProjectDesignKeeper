@@ -30883,7 +30883,7 @@ function registerApplyTool(server, service) {
 }
 function createMcpServer(service) {
   const server = new McpServer(
-    { name: "project-design-keeper", version: "1.0.0" },
+    { name: "project-design-keeper", version: "1.0.1" },
     { instructions: serverInstructions }
   );
   registerTool(server, "scan_scope", "Scan a repository scope and return a bounded summary or cursor-paged files/evidence for an immutable snapshot.", scanInput, readOnlyAnnotations, scopedOperation(service.scanScope));

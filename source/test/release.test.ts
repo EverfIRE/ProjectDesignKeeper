@@ -15,16 +15,16 @@ async function json(path: string): Promise<Record<string, unknown>> {
 }
 
 describe("release metadata and read-only acceptance contract", () => {
-  test("publishes the approved Project Design Keeper manifest", async () => {
+  test("publishes the approved ProjectDesignKeeper invocation name", async () => {
     const manifest = await json(resolve(pluginRoot, ".codex-plugin/plugin.json"));
     expect(manifest).toMatchObject({
       name: "project-design-keeper",
-      version: "1.0.0",
+      version: "1.0.1",
       author: { name: "EverfIRE" },
       skills: "./skills/",
       mcpServers: "./.mcp.json",
       interface: {
-        displayName: "Project Design Keeper",
+        displayName: "ProjectDesignKeeper",
         developerName: "EverfIRE",
         category: "Developer Tools",
         capabilities: ["Read", "Write"]
@@ -45,7 +45,7 @@ describe("release metadata and read-only acceptance contract", () => {
   test("publishes matching package metadata and executable quality gates", async () => {
     const packageManifest = await json(resolve(pluginRoot, "package.json"));
     expect(packageManifest).toMatchObject({
-      version: "1.0.0",
+      version: "1.0.1",
       scripts: {
         "test:coverage": expect.any(String),
         "test:perf": expect.any(String),

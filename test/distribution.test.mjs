@@ -51,7 +51,7 @@ async function treeFiles(root, directory = root) {
 test("repo marketplace resolves the installable release package", async () => {
   const marketplace = await readJSON(".agents/plugins/marketplace.json");
   assert.equal(marketplace.name, pluginName);
-  assert.equal(marketplace.interface.displayName, "Project Design Keeper");
+  assert.equal(marketplace.interface.displayName, "ProjectDesignKeeper");
   assert.deepEqual(marketplace.plugins, [
     {
       name: pluginName,
@@ -81,7 +81,7 @@ test("release and complete source are separate trees", async () => {
 
   const releasePackage = await readJSON(`plugins/${pluginName}/package.json`);
   assert.equal(releasePackage.name, pluginName);
-  assert.equal(releasePackage.version, "1.0.0");
+  assert.equal(releasePackage.version, "1.0.1");
   assert.equal(Object.hasOwn(releasePackage, "scripts"), false);
   assert.equal(Object.hasOwn(releasePackage, "devDependencies"), false);
   const releaseSkill = await readFile(path.join(repoRoot, "plugins", pluginName, "skills", "distill-project-design", "SKILL.md"), "utf8");
@@ -116,7 +116,8 @@ test("published plugin metadata uses stable repository URLs", async () => {
   ]) {
     const manifest = await readJSON(manifestPath);
     assert.equal(manifest.name, pluginName);
-    assert.equal(manifest.version, "1.0.0");
+    assert.equal(manifest.version, "1.0.1");
+    assert.equal(manifest.interface.displayName, "ProjectDesignKeeper");
     assert.equal(manifest.author.url, publisherURL);
     assert.equal(manifest.homepage, repositoryURL);
     assert.equal(manifest.repository, repositoryURL);
