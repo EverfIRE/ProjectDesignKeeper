@@ -16,7 +16,7 @@ describe("distill-project-design skill assets", () => {
     const skill = await text("SKILL.md");
     expect(skill).toMatch(/^---\nname: distill-project-design\ndescription: Use when[^\n]+\n---\n/u);
     expect(skill).not.toMatch(/\bTODO\b|Structuring This Skill|\[TODO:/u);
-    for (const reference of ["workflow", "knowledge-model", "document-contract", "mcp-tools"]) {
+    for (const reference of ["workflow", "knowledge-model", "document-contract", "tool-contract"]) {
       expect(skill).toContain(`references/${reference}.md`);
       await expect(text(`references/${reference}.md`)).resolves.toMatch(/^# /u);
     }
@@ -84,9 +84,9 @@ describe("distill-project-design skill assets", () => {
     }
   });
 
-  test("project context prompt explicitly invokes its generated skill", async () => {
-    const metadata = await text("assets/project-design-context/agents/openai.yaml");
-    expect(metadata).toContain("$project-design-context");
+  test("project context prompt explicitly names its generated skill", async () => {
+    const generated = await text("assets/project-design-context/SKILL.md");
+    expect(generated).toMatch(/^---\nname: project-design-context\n/u);
   });
 
   test("documents executable MCP call mappings for every scope and minimal context", async () => {

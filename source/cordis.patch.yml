@@ -1,0 +1,16 @@
+# Project Design Keeper bundle layer.
+#
+# Registers the native keeper tools (one Cordis plugin row) and a bundled
+# skill-filesystem provider that exposes `distill-project-design` to the
+# harness `skill` tool. `baseUrl` is this patch file's own directory, so the
+# skill root resolves wherever the bundle is installed.
+- insert:
+    - id: keeper-tools
+      name: project-design-keeper
+    - id: keeper-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: keeper
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"

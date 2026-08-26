@@ -1,4 +1,0 @@
-interface:
-  display_name: "Project Design Context"
-  short_description: "Load the project's relevant design context"
-  default_prompt: "Use $project-design-context to check the relevant goals, rules, module contracts, and open questions before planning this task."

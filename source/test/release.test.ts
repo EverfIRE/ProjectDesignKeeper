@@ -15,51 +15,37 @@ async function json(path: string): Promise<Record<string, unknown>> {
 }
 
 describe("release metadata and read-only acceptance contract", () => {
-  test("publishes the approved ProjectDesignKeeper invocation name", async () => {
-    const manifest = await json(resolve(pluginRoot, ".codex-plugin/plugin.json"));
-    expect(manifest).toMatchObject({
-      name: "project-design-keeper",
-      version: "1.0.1",
-      author: { name: "EverfIRE" },
-      skills: "./skills/",
-      mcpServers: "./.mcp.json",
-      interface: {
-        displayName: "ProjectDesignKeeper",
-        developerName: "EverfIRE",
-        category: "Developer Tools",
-        capabilities: ["Read", "Write"]
-      }
-    });
-
-    const searchable = JSON.stringify(manifest);
-    expect(searchable).toContain("$distill-project-design");
-    expect(searchable).toMatch(/local[^\"]*evidence|evidence[^\"]*local/i);
-    expect(searchable).toMatch(/preview/i);
-    expect(searchable).toMatch(/apply/i);
-    expect(searchable).toMatch(/reusable[^\"]*project[^\"]*context|project[^\"]*context[^\"]*reusable/i);
-    expect(manifest).not.toHaveProperty("websiteURL");
-    expect(manifest).not.toHaveProperty("privacyPolicyURL");
-    expect(manifest).not.toHaveProperty("termsOfServiceURL");
+  test("declares a DeepSeek Harness bundle layer registering tools and the bundled skill", async () => {
+    const patch = await readFile(resolve(pluginRoot, "cordis.patch.yml"), "utf8");
+    expect(patch).toContain("name: project-design-keeper");
+    expect(patch).toContain("@deepseek-ai/dsh-skill-filesystem");
+    expect(patch).toContain("customSkillDirs");
+    expect(patch).toContain("baseUrl");
+    expect(patch).not.toMatch(/codex|marketplace|mcp/iu);
   });
 
-  test("publishes matching package metadata and executable quality gates", async () => {
+  test("ships matching package metadata and executable quality gates", async () => {
     const packageManifest = await json(resolve(pluginRoot, "package.json"));
     expect(packageManifest).toMatchObject({
       version: "1.0.1",
+      type: "module",
       scripts: {
         "test:coverage": expect.any(String),
         "test:perf": expect.any(String),
-        "package:verify": expect.any(String),
-        "smoke:installed": "node scripts/smoke-installed-plugin.mjs"
+        "package:verify": expect.any(String)
       }
     });
-    expect((packageManifest.scripts as Record<string, string>)["test:perf"]).toContain("--scenario full");
+    const scripts = packageManifest.scripts as Record<string, string>;
+    expect(scripts["test:perf"]).toContain("--scenario full");
+    expect(scripts["build"]).toContain("src/plugin.ts");
+    expect(scripts["build"]).toContain("--external:@deepseek-ai/*");
+    expect(scripts).not.toHaveProperty("smoke:installed");
   });
 
   test("runs clean-checkout CI without host-local release acceptance", async () => {
     const packageManifest = await json(resolve(pluginRoot, "package.json"));
     const scripts = packageManifest.scripts as Record<string, string>;
-    const workflow = await readFile(resolve(pluginRoot, ".github/workflows/ci.yml"), "utf8");
+    const workflow = await readFile(resolve(pluginRoot, "..", ".github/workflows/ci.yml"), "utf8");
     const defaultReleaseSuite = await readFile(resolve(pluginRoot, "test/release.test.ts"), "utf8");
     const localConfig = await readFile(resolve(pluginRoot, "vitest.task10-local.config.ts"), "utf8");
     const localAcceptance = await readFile(resolve(pluginRoot, "test/task10-local.acceptance.ts"), "utf8");
@@ -71,6 +57,8 @@ describe("release metadata and read-only acceptance contract", () => {
     expect(vitestConfig.test?.testTimeout).toBe(10_000);
     expect(vitestConfig.test?.include).toEqual(["test/**/*.test.ts"]);
     expect(workflow).toMatch(/npm run test:ci/u);
+    expect(workflow).toMatch(/npm run package:verify/u);
+    expect(workflow).not.toContain("smoke:installed");
     expect(workflow).not.toContain(legacyGatePrefix);
     expect(defaultReleaseSuite).not.toContain(hostUserPrefix);
     expect(defaultReleaseSuite).not.toContain(legacyGatePrefix);
@@ -111,53 +99,6 @@ describe("release metadata and read-only acceptance contract", () => {
       expect(override?.statements, `${path} statements`).toBeGreaterThanOrEqual(90);
       expect(override?.branches, `${path} branches`).toBeGreaterThanOrEqual(85);
     }
-  });
-
-  test("runs installed smoke against an explicit temporary CI fixture after package verification", async () => {
-    const workflow = await readFile(resolve(pluginRoot, ".github/workflows/ci.yml"), "utf8");
-    const packaged = workflow.indexOf("npm run package:verify");
-    const fixture = workflow.indexOf("keeper-installed-smoke");
-    const smoke = workflow.indexOf("npm run smoke:installed");
-    expect(packaged).toBeGreaterThanOrEqual(0);
-    expect(fixture).toBeGreaterThan(packaged);
-    expect(smoke).toBeGreaterThan(fixture);
-    expect(workflow).toMatch(/npm run smoke:installed -- .*\.package[/\\]project-design-keeper/iu);
-    expect(workflow.slice(fixture, smoke)).not.toMatch(/Set-Content[^\n]*\$fixture/iu);
-  });
-
-  test("preserves failed smoke evidence and only deletes a verified empty CI fixture non-recursively", async () => {
-    const workflow = await readFile(resolve(pluginRoot, ".github/workflows/ci.yml"), "utf8");
-    const finallyIndex = workflow.indexOf("finally {");
-    const successIndex = workflow.indexOf("$smokeSucceeded");
-    const boundedEmptyIndex = workflow.indexOf("EnumerateFileSystemEntries($fixture)", finallyIndex);
-    const firstEntryIndex = workflow.indexOf("MoveNext()", boundedEmptyIndex);
-    const cleanupIndex = workflow.indexOf("[IO.Directory]::Delete($fixture, $false)");
-    const rootRecheckIndex = workflow.indexOf("GetDirectoryIdentity($runnerTemp)", finallyIndex);
-    const fixtureRecheckIndex = workflow.indexOf("GetDirectoryIdentity($fixture)", finallyIndex);
-    const componentRecheckIndex = workflow.indexOf(
-      "Assert-NoReparsePathComponents -Label 'CI installed smoke fixture' -Path $fixture",
-      finallyIndex
-    );
-
-    expect(workflow).toMatch(/Set-StrictMode -Version Latest/u);
-    expect(workflow).toMatch(/\$ErrorActionPreference\s*=\s*['"]Stop['"]/u);
-    expect(workflow).toMatch(/GetFileInformationByHandle/u);
-    expect(workflow).toMatch(/FILE_FLAG_BACKUP_SEMANTICS/u);
-    expect(workflow).toMatch(/FILE_FLAG_OPEN_REPARSE_POINT/u);
-    expect(workflow).toMatch(/\$runnerTempIdentity\s*=.*GetDirectoryIdentity\(\$runnerTemp\)/u);
-    expect(workflow).toMatch(/\$fixtureIdentity\s*=.*GetDirectoryIdentity\(\$fixture\)/u);
-    expect(workflow).toMatch(/smoke failed[^\n]*preserving[^\n]*\$fixture/iu);
-    expect(workflow).not.toMatch(/Remove-Item[^\n]*\$fixture[^\n]*-Recurse/iu);
-    expect(workflow).not.toMatch(/Assert-NoReparseFixtureTree/u);
-    expect(finallyIndex).toBeGreaterThanOrEqual(0);
-    expect(successIndex).toBeGreaterThanOrEqual(0);
-    expect(componentRecheckIndex).toBeGreaterThan(finallyIndex);
-    expect(rootRecheckIndex).toBeGreaterThan(finallyIndex);
-    expect(fixtureRecheckIndex).toBeGreaterThan(finallyIndex);
-    expect(fixtureRecheckIndex).toBeGreaterThan(componentRecheckIndex);
-    expect(boundedEmptyIndex).toBeGreaterThan(fixtureRecheckIndex);
-    expect(firstEntryIndex).toBeGreaterThan(boundedEmptyIndex);
-    expect(cleanupIndex).toBeGreaterThan(firstEntryIndex);
   });
 
   test("emits a machine-readable 20-sample scope-cache performance gate", async () => {
@@ -206,11 +147,12 @@ describe("release metadata and read-only acceptance contract", () => {
     expect(runner).not.toMatch(/applyUpdate\s*\(|apply_update/u);
   });
 
-  test("ships the bundled stdio runtime as a tracked publishable file", async () => {
+  test("ships the compiled plugin entry and service factory as publishable files", async () => {
+    await expect(readFile(resolve(pluginRoot, "dist/plugin.js"))).resolves.toBeInstanceOf(Buffer);
     await expect(readFile(resolve(pluginRoot, "dist/index.js"))).resolves.toBeInstanceOf(Buffer);
+    await expect(execFile("git", ["-C", pluginRoot, "check-ignore", "--quiet", "dist/plugin.js"]))
+      .rejects.toMatchObject({ code: 1 });
     await expect(execFile("git", ["-C", pluginRoot, "check-ignore", "--quiet", "dist/index.js"]))
       .rejects.toMatchObject({ code: 1 });
-    await expect(execFile("git", ["-C", pluginRoot, "ls-files", "--error-unmatch", "dist/index.js"]))
-      .resolves.toMatchObject({ stdout: expect.stringContaining("dist/index.js") });
   });
 });

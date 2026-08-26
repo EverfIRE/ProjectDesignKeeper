@@ -1,16 +1,54 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, open, opendir, realpath, rename, rmdir, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, opendir, open, realpath, rename, rmdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const packageParent = resolve(root, ".package");
 const target = resolve(packageParent, "project-design-keeper");
-const allowlist = [".codex-plugin", ".mcp.json", "dist", "skills", "package.json"];
-const textSuffixes = [".js", ".json", ".md", ".md.template", ".yaml", ".yml"];
+// The bundle ships only the compiled plugin entry, the configuration layer,
+// and the skills tree. `dist/index.js` (the former MCP stdio entry) and all
+// repository development artifacts stay out of the installable package.
+const selectedSources = ["cordis.patch.yml", "dist", "skills", "package.json"];
+const excludedSources = ["dist/index.js"];
 const maximumEntries = 256;
 const maximumDepth = 16;
 const maximumFileBytes = 16 * 1024 * 1024;
 const maximumTotalBytes = 64 * 1024 * 1024;
+const textSuffixes = [".js", ".json", ".md", ".md.template", ".yaml", ".yml"];
+
+const runtimeManifest = {
+  name: "project-design-keeper",
+  version: "1.0.1",
+  description: "Distill local project evidence into validated design documentation and reusable project context.",
+  type: "module",
+  main: "dist/plugin.js",
+  license: "MIT",
+  homepage: "https://github.com/EverfIRE/ProjectDesignKeeper#readme",
+  repository: {
+    type: "git",
+    url: "https://github.com/EverfIRE/ProjectDesignKeeper.git",
+    directory: "source"
+  },
+  files: [
+    "cordis.patch.yml",
+    "dist/plugin.js",
+    "skills/"
+  ],
+  dsh: {
+    bundle: {
+      patch: "./cordis.patch.yml"
+    }
+  },
+  peerDependencies: {
+    "@deepseek-ai/cordis": ">=4.0.1",
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.7",
+    "@deepseek-ai/dsh-user-approval": ">=0.1.0-rc.7",
+    "@deepseek-ai/dsh-user-questions": ">=0.1.0-rc.7",
+    "@deepseek-ai/schemastery": ">=3.18.1"
+  }
+};
+
+const runtimeManifestBytes = Buffer.from(`${JSON.stringify(runtimeManifest, null, 2)}\n`, "utf8");
 
 function samePath(left, right) {
   const normalize = (value) => process.platform === "win32"
@@ -120,13 +158,14 @@ async function readBoundedFile(path, label, budget) {
   };
 }
 
-async function captureTree(directory, label, selectedTopLevel) {
+async function captureTree(directory, label, selectedTopLevel, excluded = []) {
   await secureDirectory(directory, `${label} root`);
   const byteBudget = createByteBudget(label);
   const entries = [];
   let count = 0;
 
   const capture = async (path, name, depth) => {
+    if (excluded.includes(name)) return;
     if (depth > maximumDepth) {
       throw new Error(`${label} depth exceeds the limit of ${maximumDepth}: ${name}`);
     }
@@ -150,11 +189,11 @@ async function captureTree(directory, label, selectedTopLevel) {
     entries.push({ path: name, kind: "file", ...evidence });
   };
 
-  if (selectedTopLevel) {
-    for (const name of [...selectedTopLevel].sort()) await capture(resolve(directory, name), name, 1);
-  } else {
+  if (selectedTopLevel === undefined) {
     const handle = await opendir(directory);
     for await (const entry of handle) await capture(resolve(directory, entry.name), entry.name, 1);
+  } else {
+    for (const name of [...selectedTopLevel].sort()) await capture(resolve(directory, name), name, 1);
   }
   return entries.sort((left, right) => left.path.localeCompare(right.path, "en-US"));
 }
@@ -175,21 +214,28 @@ function assertSameSnapshot(expected, observed, label) {
 
 function normalizedContents(path, contents) {
   if (!textSuffixes.some((suffix) => path.toLowerCase().endsWith(suffix))) return contents;
-  const normalized = contents.toString("utf8").replace(/\r\n?/gu, "\n");
-  if (path !== "package.json") return Buffer.from(normalized, "utf8");
-  const { scripts: _scripts, devDependencies: _devDependencies, ...runtimeManifest } = JSON.parse(normalized);
-  return Buffer.from(`${JSON.stringify(runtimeManifest, null, 2)}\n`, "utf8");
+  return Buffer.from(contents.toString("utf8").replace(/\r\n?/gu, "\n"), "utf8");
 }
 
 function expectedPackageSnapshot(sourceSnapshot) {
-  return sourceSnapshot.map((entry) => entry.kind === "directory"
-    ? { path: entry.path, kind: entry.kind }
-    : {
+  return sourceSnapshot.map((entry) => {
+    if (entry.kind === "directory") return { path: entry.path, kind: entry.kind };
+    if (entry.path === "package.json") {
+      return {
         path: entry.path,
         kind: entry.kind,
-        contents: normalizedContents(entry.path, entry.contents),
-        digest: createHash("sha256").update(normalizedContents(entry.path, entry.contents)).digest("hex")
-      });
+        contents: runtimeManifestBytes,
+        digest: createHash("sha256").update(runtimeManifestBytes).digest("hex")
+      };
+    }
+    const contents = normalizedContents(entry.path, entry.contents);
+    return {
+      path: entry.path,
+      kind: entry.kind,
+      contents,
+      digest: createHash("sha256").update(contents).digest("hex")
+    };
+  });
 }
 
 function assertSamePackageLayout(expected, observed, label) {
@@ -211,8 +257,6 @@ async function removeCapturedTree(directory, rootIdentity, snapshot, label) {
     if (!sameFileIdentity(entry.identity, observed.identity) || entry.digest !== observed.digest) {
       throw new Error(`${label} cleanup file changed before deletion: ${entry.path}`);
     }
-    // Node exposes only pathname deletion. The immediately preceding handle-bound
-    // identity check and non-recursive cleanup constrain the remaining syscall window.
     await unlink(path);
   }
   const directories = snapshot
@@ -254,11 +298,11 @@ async function waitAtTestBarrier(phase, metadata = {}) {
 assertDirectChild(root, packageParent, "Package parent");
 assertDirectChild(packageParent, target, "Package target");
 const rootIdentity = await secureDirectory(root, "Plugin root");
-const sourceSnapshot = await captureTree(root, "Package source inventory", allowlist);
+const sourceSnapshot = await captureTree(root, "Package source inventory", selectedSources, excludedSources);
 const expectedPackage = expectedPackageSnapshot(sourceSnapshot);
 const assertSourceUnchanged = async (phase) => {
   await assertDirectoryIdentity(root, rootIdentity, `Plugin root ${phase}`);
-  const observed = await captureTree(root, `Package source inventory ${phase}`, allowlist);
+  const observed = await captureTree(root, `Package source inventory ${phase}`, selectedSources, excludedSources);
   assertSameSnapshot(sourceSnapshot, observed, `Package source ${phase}`);
 };
 await assertDirectoryIdentity(root, rootIdentity, "Plugin root");

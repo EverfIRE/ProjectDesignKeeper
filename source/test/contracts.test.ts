@@ -2,8 +2,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { writeCanonicalPackFixture } from "./canonical-pack-fixture.js";
 import { createTrustedTestKeeper } from "./keeper.js";
@@ -24,10 +22,6 @@ interface KeeperApi {
   validatePack(input: Record<string, unknown>): Promise<ToolResult>;
   previewUpdate(input: Record<string, unknown>): Promise<ToolResult>;
   applyUpdate(input: Record<string, unknown>): Promise<ToolResult>;
-  createMcpServer(): Promise<{
-    connect(transport: InMemoryTransport): Promise<void>;
-    close(): Promise<void>;
-  }>;
 }
 
 async function keeper(): Promise<KeeperApi> {
@@ -264,32 +258,5 @@ describe("Project Design Keeper public contracts", () => {
 
     const after = await api.snapshot({ path: project.repository, previousSnapshot: before });
     expect(after).toMatchObject({ changed: [relative(project.repository, project.trackedText).replaceAll("\\", "/")] });
-  });
-
-  test("exposes the public contract through an SDK MCP client tool list request", async () => {
-    const api = await keeper();
-    const server = await api.createMcpServer();
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "project-design-keeper-contract-test", version: "0.1.0" });
-
-    try {
-      await server.connect(serverTransport);
-      await client.connect(clientTransport);
-      const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
-      expect(names).toEqual([
-        "analyze_redundancy",
-        "apply_update",
-        "detect_drift",
-        "preview_update",
-        "query_context",
-        "query_history",
-        "scan_scope",
-        "search_evidence",
-        "validate_pack"
-      ]);
-    } finally {
-      await client.close();
-      await server.close();
-    }
   });
 });

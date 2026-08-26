@@ -48,27 +48,14 @@ async function treeFiles(root, directory = root) {
   return results.sort();
 }
 
-test("repo marketplace resolves the installable release package", async () => {
-  const marketplace = await readJSON(".agents/plugins/marketplace.json");
-  assert.equal(marketplace.name, pluginName);
-  assert.equal(marketplace.interface.displayName, "ProjectDesignKeeper");
-  assert.deepEqual(marketplace.plugins, [
-    {
-      name: pluginName,
-      source: {
-        source: "local",
-        path: `./plugins/${pluginName}`,
-      },
-      policy: {
-        installation: "AVAILABLE",
-        authentication: "ON_INSTALL",
-      },
-      category: "Developer Tools",
-    },
-  ]);
+test("repo bundle source resolves the installable release package", async () => {
+  const patch = await readFile(path.join(repoRoot, "source", "cordis.patch.yml"), "utf8");
+  assert.match(patch, /name: project-design-keeper/u);
+  assert.match(patch, /@deepseek-ai\/dsh-skill-filesystem/u);
+  assert.doesNotMatch(patch, /codex|marketplace|mcp/iu);
 
-  assert.equal(await exists(`plugins/${pluginName}/.codex-plugin/plugin.json`), true);
-  assert.equal(await exists(`plugins/${pluginName}/dist/index.js`), true);
+  assert.equal(await exists(`plugins/${pluginName}/dist/plugin.js`), true);
+  assert.equal(await exists(`plugins/${pluginName}/cordis.patch.yml`), true);
 });
 
 test("release and complete source are separate trees", async () => {
@@ -82,11 +69,13 @@ test("release and complete source are separate trees", async () => {
   const releasePackage = await readJSON(`plugins/${pluginName}/package.json`);
   assert.equal(releasePackage.name, pluginName);
   assert.equal(releasePackage.version, "1.0.1");
+  assert.equal(releasePackage.main, "dist/plugin.js");
+  assert.equal(releasePackage.dsh?.bundle?.patch, "./cordis.patch.yml");
   assert.equal(Object.hasOwn(releasePackage, "scripts"), false);
   assert.equal(Object.hasOwn(releasePackage, "devDependencies"), false);
   const releaseSkill = await readFile(path.join(repoRoot, "plugins", pluginName, "skills", "distill-project-design", "SKILL.md"), "utf8");
-  assert.match(releaseSkill, /codex plugin marketplace upgrade project-design-keeper/u);
-  assert.doesNotMatch(releaseSkill, /codex plugin upgrade project-design-keeper/u);
+  assert.match(releaseSkill, /dsh plugin/u);
+  assert.doesNotMatch(releaseSkill, /codex plugin marketplace upgrade/u);
 });
 
 test("committed release exactly matches the source packager output", async () => {
@@ -110,19 +99,15 @@ test("committed release exactly matches the source packager output", async () =>
 });
 
 test("published plugin metadata uses stable repository URLs", async () => {
-  for (const manifestPath of [
-    `plugins/${pluginName}/.codex-plugin/plugin.json`,
-    "source/.codex-plugin/plugin.json",
-  ]) {
-    const manifest = await readJSON(manifestPath);
-    assert.equal(manifest.name, pluginName);
-    assert.equal(manifest.version, "1.0.1");
-    assert.equal(manifest.interface.displayName, "ProjectDesignKeeper");
-    assert.equal(manifest.author.url, publisherURL);
-    assert.equal(manifest.homepage, repositoryURL);
-    assert.equal(manifest.repository, repositoryURL);
-    assert.equal(manifest.interface.websiteURL, repositoryURL);
-  }
+  const bundleManifest = await readJSON(`plugins/${pluginName}/package.json`);
+  assert.equal(bundleManifest.name, pluginName);
+  assert.equal(bundleManifest.version, "1.0.1");
+  assert.equal(bundleManifest.homepage, `${repositoryURL}#readme`);
+  assert.deepEqual(bundleManifest.repository, {
+    type: "git",
+    url: `${repositoryURL}.git`,
+    directory: "source",
+  });
 
   const sourcePackage = await readJSON("source/package.json");
   assert.deepEqual(sourcePackage.author, { name: "EverfIRE", url: publisherURL });
@@ -139,9 +124,10 @@ test("CI rebuilds the runtime before distribution checks and covers Linux", asyn
   const workflow = await readFile(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
   const install = workflow.indexOf("npm ci");
   const build = workflow.indexOf("npm run build");
+  const packageVerify = workflow.indexOf("npm run package:verify");
   const distribution = workflow.indexOf("node --test test/distribution.test.mjs");
-  assert.ok(install >= 0 && build > install && distribution > build);
-  assert.match(workflow, /git diff --exit-code -- source\/dist\/index\.js plugins\/project-design-keeper\/dist\/index\.js/u);
+  assert.ok(install >= 0 && build > install && packageVerify > build && distribution > packageVerify);
+  assert.match(workflow, /git diff --exit-code -- source\/dist\/plugin\.js/u);
   assert.match(workflow, /runs-on:\s*ubuntu-latest/u);
 });
 

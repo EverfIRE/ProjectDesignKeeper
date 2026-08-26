@@ -2,9 +2,6 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createProjectDesignKeeper } from "../src/index.js";
 import { createProjectFixture, removeProjectFixture, type ProjectFixture } from "./fixtures.js";
@@ -173,31 +170,13 @@ async function candidate(overrides: { brokenLink?: boolean; omitLastRecord?: boo
   };
 }
 
-async function withClient(run: (client: Client) => Promise<void>): Promise<void> {
-  const server = await createProjectDesignKeeper({ cacheDirectory }).createMcpServer() as McpServer;
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: "candidate-preview-test", version: "0.1.0" });
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  try {
-    await run(client);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-}
-
 async function preview(candidatePack: Candidate): Promise<Record<string, unknown>> {
-  let structured: Record<string, unknown> = {};
-  await withClient(async (client) => {
-    const result = await client.callTool({
-      name: "preview_update",
-      arguments: { root: project().repository, pack: candidatePack.pack, changes: candidatePack.changes }
-    });
-    expect(result.isError).not.toBe(true);
-    structured = result.structuredContent as Record<string, unknown>;
+  const api = createProjectDesignKeeper({ cacheDirectory });
+  return api.previewUpdate({
+    root: project().repository,
+    pack: candidatePack.pack,
+    changes: candidatePack.changes
   });
-  return structured;
 }
 
 describe("candidate project-design pack preview", () => {

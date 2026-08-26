@@ -1,25 +1,27 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ElicitRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createProjectDesignKeeper } from "../src/index.js";
+import { approvalMessage } from "../src/tools/apply-approval.js";
 import {
   createApplyApprovalAuthority,
+  type ApplyAuthorization,
   type ChangesetApprovalBinding
 } from "../src/security/approval.js";
 import { writeV3PackFixture } from "./canonical-pack-fixture.js";
 import type { ServiceOptions } from "../src/types/schema.js";
 import { createProjectFixture, removeProjectFixture, type ProjectFixture } from "./fixtures.js";
 
-type ElicitationAction = "accept" | "decline" | "cancel";
-type ElicitationReply = {
-  action: ElicitationAction;
-  content?: Record<string, string>;
-};
+/**
+ * Host-mediated apply approval for the native plugin.
+ *
+ * The former MCP elicitation channel is replaced by the keeper authorization
+ * capability: a caller inspects the authenticated changeset, issues a
+ * one-use authorization bound to the exact summary and request identity, and
+ * the apply transaction re-authenticates and consumes it. Every tamper,
+ * expiry, and mismatch below is rejected by the unchanged business layer.
+ */
 
 let fixture: ProjectFixture | undefined;
 
@@ -58,45 +60,16 @@ async function preview(api: ReturnType<typeof createProjectDesignKeeper>) {
   });
 }
 
-async function connect(
-  server: McpServer,
-  options: {
-    form?: boolean;
-    onElicit?: (request: Parameters<Parameters<Client["setRequestHandler"]>[1]>[0]) => Promise<ElicitationReply>;
-  } = {}
-): Promise<Client> {
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client(
-    { name: "apply-approval-test", version: "1.0.0" },
-    options.form ? { capabilities: { elicitation: { form: {} } } } : undefined
-  );
-  if (options.onElicit) {
-    client.setRequestHandler(ElicitRequestSchema, async (request) => options.onElicit!(request));
-  }
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  return client;
-}
+const testRequestIdentity = Object.freeze({ native: true, callId: "apply-approval-test" });
 
-async function withApplyClient(
+async function issueAuthorization(
   api: ReturnType<typeof createProjectDesignKeeper>,
-  options: Parameters<typeof connect>[1],
-  run: (client: Client) => Promise<void>
-): Promise<void> {
-  const server = await api.createMcpServer() as McpServer;
-  const client = await connect(server, options);
-  try {
-    await run(client);
-  } finally {
-    await client.close();
-    await server.close();
-  }
-}
-
-function suffixFrom(message: string): string {
-  const suffix = /final eight hexadecimal digest characters: ([a-f0-9]{8})\b/u.exec(message)?.[1];
-  if (!suffix) throw new Error("approval message did not contain an eight-character digest suffix");
-  return suffix;
+  root: string,
+  changesetId: string
+): Promise<{ binding: ChangesetApprovalBinding; authorization: ApplyAuthorization }> {
+  const binding = await api.inspectChangesetForApproval({ root, changesetId });
+  const authorization = api.issueApplyAuthorization(binding, testRequestIdentity);
+  return { binding, authorization };
 }
 
 function canonicalJson(value: unknown): string {
@@ -147,18 +120,14 @@ function approvalBinding(overrides: Partial<ChangesetApprovalBinding> = {}): Cha
 }
 
 describe("host-mediated apply approval", () => {
-  test("fails closed when the client lacks form elicitation", async () => {
+  test("fails closed when apply is called without an authorization capability", async () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
 
-    await withApplyClient(api, {}, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
-    });
-
+    await expect(api.applyUpdateDirect({
+      root: project().repository,
+      changesetId: pending.changesetId
+    })).rejects.toThrow(/host-mediated authorization/i);
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(join(cacheDirectory(), "changesets", `${String(pending.changesetId)}.json`), "utf8"))
       .resolves.toContain(String(pending.changesetId));
@@ -166,137 +135,82 @@ describe("host-mediated apply approval", () => {
       .resolves.toContain("hmac-sha256");
   });
 
-  test("elicits an exact typed confirmation and applies once when accepted", async () => {
+  test("issues an exact approval summary and applies once when authorized", async () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
-    const elicitations: Array<{ message: string; requestedSchema: unknown }> = [];
-
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => {
-        const message = String(request.params.message);
-        elicitations.push({ message, requestedSchema: request.params.requestedSchema });
-        return {
-          action: "accept",
-          content: { decision: "approve", confirmation: suffixFrom(message) }
-        };
-      }
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result.isError).not.toBe(true);
-      expect(result.structuredContent).toMatchObject({ applied: true });
+    const binding = await api.inspectChangesetForApproval({
+      root: project().repository,
+      changesetId: pending.changesetId
     });
 
-    expect(elicitations).toHaveLength(1);
-    expect(elicitations[0].message.length).toBeLessThan(16 * 1024);
-    expect(elicitations[0].message).toContain(".agents/skills/project-design-context/approval.md");
-    expect(elicitations[0].message).not.toContain("PRIVATE-FILE-BODY-MUST-NOT-BE-ELICITED");
-    expect(elicitations[0].message).not.toContain(cacheDirectory());
-    expect(JSON.stringify(elicitations[0].requestedSchema)).not.toContain("PRIVATE-FILE-BODY-MUST-NOT-BE-ELICITED");
-    expect(JSON.stringify(elicitations[0].requestedSchema)).not.toContain(cacheDirectory());
+    const message = approvalMessage(binding);
+    expect(message.length).toBeLessThan(16 * 1024);
+    expect(message).toContain(".agents/skills/project-design-context/approval.md");
+    expect(message).not.toContain("PRIVATE-FILE-BODY-MUST-NOT-BE-ELICITED");
+    expect(message).not.toContain(cacheDirectory());
+    expect(JSON.stringify(binding)).not.toContain("PRIVATE-FILE-BODY-MUST-NOT-BE-ELICITED");
+    expect(JSON.stringify(binding)).not.toContain(cacheDirectory());
+
+    const authorization = api.issueApplyAuthorization(binding, testRequestIdentity);
+    const applied = await api.applyUpdateDirect(
+      { root: project().repository, changesetId: pending.changesetId },
+      authorization,
+      testRequestIdentity
+    );
+    expect(applied).toMatchObject({ applied: true });
     await expect(readFile(targetFile(), "utf8")).resolves.toContain("PRIVATE-FILE-BODY-MUST-NOT-BE-ELICITED");
   });
 
-  test.each(["decline", "cancel"] as const)("does not mutate when elicitation returns %s", async (action) => {
+  test("a consumed authorization cannot apply a second time", async () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
+    const { authorization } = await issueAuthorization(
+      api,
+      project().repository,
+      String(pending.changesetId)
+    );
 
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async () => ({ action })
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId: pending.changesetId },
+      authorization,
+      testRequestIdentity
+    )).resolves.toMatchObject({ applied: true });
+
+    const second = await api.previewUpdate({
+      root: project().repository,
+      changes: [{
+        path: ".agents/skills/project-design-context/approval-second.md",
+        managedBlock: {
+          recordId: "approval.second",
+          content: "# Second\n\nSECOND-BODY\n"
+        }
+      }]
     });
-
-    await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(readFile(join(cacheDirectory(), "changesets", `${String(pending.changesetId)}.json`), "utf8"))
-      .resolves.toContain(String(pending.changesetId));
-    await expect(readFile(join(cacheDirectory(), "changesets", `${String(pending.changesetId)}.sig.json`), "utf8"))
-      .resolves.toContain("hmac-sha256");
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId: second.changesetId },
+      authorization,
+      testRequestIdentity
+    )).rejects.toThrow(/authorization|consumed/i);
   });
 
-  test.each([
-    ["malformed content", { decision: "approve" }],
-    ["wrong digest suffix", { decision: "approve", confirmation: "00000000" }],
-    ["wrong decision", { decision: "reject", confirmation: "00000000" }],
-    ["an extra field", { decision: "approve", confirmation: "00000000", extra: "not-allowed" }]
-  ] as const)("does not mutate after accepted elicitation with %s", async (_label, content) => {
+  test("re-authenticates the changeset after inspection and rejects cache mutation", async () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
+    const changesetId = String(pending.changesetId);
+    const { authorization } = await issueAuthorization(api, project().repository, changesetId);
 
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => ({
-        action: "accept",
-        content: "confirmation" in content && content.confirmation === "00000000" && content.decision === "approve"
-          ? content
-          : content.decision === "reject"
-            ? { ...content, confirmation: suffixFrom(String(request.params.message)) }
-            : content
-      })
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
-    });
+    const changesetPath = join(cacheDirectory(), "changesets", `${changesetId}.json`);
+    const cached = JSON.parse(await readFile(changesetPath, "utf8")) as {
+      changes: Array<{ content?: string }>;
+    };
+    cached.changes[0].content = `${cached.changes[0].content ?? ""}\nTAMPERED-AFTER-INSPECTION\n`;
+    await writeFile(changesetPath, `${JSON.stringify(cached, null, 2)}\n`, "utf8");
 
-    await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  test("does not mutate when an accepted elicitation omits content", async () => {
-    const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
-    const pending = await preview(api);
-
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async () => ({ action: "accept" })
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
-    });
-
-    await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  test("re-authenticates the changeset after elicitation and rejects cache mutation", async () => {
-    const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
-    const pending = await preview(api);
-    const changesetPath = join(cacheDirectory(), "changesets", `${String(pending.changesetId)}.json`);
-
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => {
-        const cached = JSON.parse(await readFile(changesetPath, "utf8")) as {
-          changes: Array<{ content?: string }>;
-        };
-        cached.changes[0].content = `${cached.changes[0].content ?? ""}\nTAMPERED-AFTER-INSPECTION\n`;
-        await writeFile(changesetPath, `${JSON.stringify(cached, null, 2)}\n`, "utf8");
-        const message = String(request.params.message);
-        return {
-          action: "accept",
-          content: { decision: "approve", confirmation: suffixFrom(message) }
-        };
-      }
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
-    });
-
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId },
+      authorization,
+      testRequestIdentity
+    )).rejects.toThrow(/authentication|tampered|authorization|binding|capability/i);
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -304,32 +218,22 @@ describe("host-mediated apply approval", () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
     const changesetId = String(pending.changesetId);
+    const { authorization } = await issueAuthorization(api, project().repository, changesetId);
 
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => {
-        await rewriteAuthenticatedChangeset(changesetId, (changeset) => {
-          const changes = changeset.changes as Array<Record<string, unknown>>;
-          changes[0].content = `${String(changes[0].content)}\nAUTHENTICATED-DIFF-CHANGE\n`;
-          const semanticDecisionIds = changeset.semanticDecisionIds as string[];
-          changeset.diffDigest = `sha256:${createHash("sha256")
-            .update(canonicalJson({ changes, semanticDecisionIds }), "utf8")
-            .digest("hex")}`;
-        });
-        const message = String(request.params.message);
-        return {
-          action: "accept",
-          content: { decision: "approve", confirmation: suffixFrom(message) }
-        };
-      }
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
+    await rewriteAuthenticatedChangeset(changesetId, (changeset) => {
+      const changes = changeset.changes as Array<Record<string, unknown>>;
+      changes[0].content = `${String(changes[0].content)}\nAUTHENTICATED-DIFF-CHANGE\n`;
+      const semanticDecisionIds = changeset.semanticDecisionIds as string[];
+      changeset.diffDigest = `sha256:${createHash("sha256")
+        .update(canonicalJson({ changes, semanticDecisionIds }), "utf8")
+        .digest("hex")}`;
     });
 
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId },
+      authorization,
+      testRequestIdentity
+    )).rejects.toThrow(/authorization|binding|capability/i);
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
@@ -337,59 +241,40 @@ describe("host-mediated apply approval", () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
     const changesetId = String(pending.changesetId);
+    const { authorization } = await issueAuthorization(api, project().repository, changesetId);
 
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => {
-        await rewriteAuthenticatedChangeset(changesetId, (changeset) => {
-          changeset.archiveActions = {
-            archivedRecordIds: ["record.injected"],
-            tombstonedRecordIds: []
-          };
-        });
-        const message = String(request.params.message);
-        return {
-          action: "accept",
-          content: { decision: "approve", confirmation: suffixFrom(message) }
-        };
-      }
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
+    await rewriteAuthenticatedChangeset(changesetId, (changeset) => {
+      changeset.archiveActions = {
+        archivedRecordIds: ["record.injected"],
+        tombstonedRecordIds: []
+      };
     });
 
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId },
+      authorization,
+      testRequestIdentity
+    )).rejects.toThrow(/authorization|binding|capability/i);
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  test("rejects an accepted elicitation when the changeset expires before apply", async () => {
+  test("rejects an authorized apply when the changeset expires before apply", async () => {
     let currentTime = 1_000_000;
     const api = createProjectDesignKeeper({
       cacheDirectory: cacheDirectory(),
       now: () => currentTime
     });
     const pending = await preview(api);
+    const changesetId = String(pending.changesetId);
+    const { authorization } = await issueAuthorization(api, project().repository, changesetId);
 
-    await withApplyClient(api, {
-      form: true,
-      onElicit: async (request) => {
-        currentTime += 30 * 60 * 1000;
-        const message = String(request.params.message);
-        return {
-          action: "accept",
-          content: { decision: "approve", confirmation: suffixFrom(message) }
-        };
-      }
-    }, async (client) => {
-      const result = await client.callTool({
-        name: "apply_update",
-        arguments: { root: project().repository, changesetId: pending.changesetId }
-      });
-      expect(result).toMatchObject({ isError: true });
-    });
+    currentTime += 30 * 60 * 1000;
 
+    await expect(api.applyUpdateDirect(
+      { root: project().repository, changesetId },
+      authorization,
+      testRequestIdentity
+    )).rejects.toThrow(/expired/i);
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 

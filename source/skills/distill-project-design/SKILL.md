@@ -40,21 +40,27 @@ If semantics change after preview, discard the changeset, rebuild the candidate,
 
 End audit/read-only operations before `preview_update` or `apply_update` unless the user separately asks to refresh. If an existing output lacks Keeper ownership, stop at the conflict preview.
 
-Read [knowledge-model.md](references/knowledge-model.md) before creating records, IDs, strengths, managed blocks, conflicts, or supersession links. Read [document-contract.md](references/document-contract.md) before generating or reorganizing the pack. Read [mcp-tools.md](references/mcp-tools.md) for tool boundaries and inputs/outputs.
+Read [knowledge-model.md](references/knowledge-model.md) before creating records, IDs, strengths, managed blocks, conflicts, or supersession links. Read [document-contract.md](references/document-contract.md) before generating or reorganizing the pack. Read [tool-contract.md](references/tool-contract.md) for tool boundaries and inputs/outputs.
 
 ## Preserve History and Human Work
 
 Preserve human spans and stable IDs. Never overwrite a hash conflict, restate derived navigation as canonical knowledge, or silently delete history. Use `query_history` for non-current knowledge and `analyze_redundancy` for user-decided merge candidates. Archive only after two confirmed terminal refreshes; keep two full generations and permanent tombstones. Follow the knowledge-model and document-contract references for exact fields and ownership.
 
-## Activate a Packaged Runtime
+## Install and Activate in DeepSeek Harness
 
-For a marketplace installation, upgrade through Codex with `codex plugin marketplace upgrade project-design-keeper`, then open a new task or restart the app. The installable runtime intentionally omits repository development scripts.
+Project Design Keeper is a DeepSeek Harness bundle: one Cordis plugin row registers the nine native tools, and a bundled skill-filesystem provider exposes `$distill-project-design` through the harness `skill` tool. The installable runtime intentionally omits repository development scripts.
 
-Manual package verification and cache activation are developer-only operations. Run them from the repository's `source/` checkout after reading the release activation section in [workflow.md](references/workflow.md). There, run `npm run package:verify`, then invoke `scripts/activate-installed-plugin.ps1` in one `powershell.exe -NoProfile` process with absolute `-PackageRoot`, `-InstallRoot`, and disposable `-SmokeProject` directories. Package construction and verification are bounded, exact-topology operations whose reads bind identity, size, content, and high-resolution version metadata. The activation script applies a global work deadline, denies concurrent writers while authenticating package files, refuses a matching live Codex `node.exe` MCP child, reports its PID, and never kills it.
+Install the release bundle into a profile with `dsh plugin add` (Git, npm, or a tarball), then start or restart the Harness host:
 
-Replacing files cannot reconnect an existing stdio client. Close the active Codex task or restart the app before activation, then use a new task or another app restart to verify the new runtime. The installed smoke requires two absolute positional roots and an empty disposable smoke-project directory; its environment variables are a deprecated zero-positional compatibility fallback. It creates a complete canonical Schema 3 fixture under an isolated child, validates it, and waits for bounded confirmation that the MCP stdio child has fully closed before cleanup. Activation starts that smoke suspended inside a private Windows Job Object, limits aggregate stdout/stderr to 1 MiB, and on timeout or overflow terminates the complete owned tree and confirms zero active processes before rollback. Fixture and cache roots are moved into random same-parent quarantines and identity-checked after the move; only the confirmed self-created roots are removed from fixed, bounded inventories. Activation staging holds the random root and every expected subdirectory against replacement, while activation cleanup deletes only through authenticated Windows handles after a final exact-inventory commit point. A post-commit cleanup error fails nonzero and preserves the quarantine and all remaining objects, although already-disposed authenticated objects may be gone. A nonempty project is rejected without modification, and any close, identity, hash, deadline, inventory, handle, or cleanup ambiguity fails nonzero while preserving the remaining paths as evidence. Pure Node smoke cleanup still has a final pathname check/use window inside the random quarantine; it does not claim handle-bound conditional deletion. Smoke preview is non-writing and deliberately verifies that a client without host elicitation cannot apply. Normal writes still require host elicitation for the exact confirmed preview, and an expired changeset must be rebuilt and reconfirmed.
+```text
+dsh plugin --profile <name> add github:EverfIRE/ProjectDesignKeeper
+```
 
-## MCP Unavailable
+Upgrade by re-adding the bundle and restarting the host. Changing plugin code never hot-swaps already-mounted tools: after an upgrade, start a new session or restart the host before relying on the new runtime.
+
+Manual package verification is a developer-only operation run from the repository's `source/` checkout after reading the release verification section in [workflow.md](references/workflow.md): `npm run build && npm run package:verify`. The packaged bundle is a bounded, exact-topology copy of the compiled plugin, the patch layer, and the skills tree; verification re-captures the source before and after publication so a concurrent source change cannot produce a successful mixed-version package.
+
+## Keeper Unavailable
 
 For ordinary downstream task context, read `docs/project-design/index.md` and its mapped Markdown directly. For initialize, refresh, preview/apply, or any maintenance write, stop and explain that transaction protection is unavailable. Do not emulate Keeper writes with direct filesystem edits.
 

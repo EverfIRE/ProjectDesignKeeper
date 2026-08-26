@@ -1,8 +1,13 @@
 var __defProp = Object.defineProperty;
 var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
 };
+
+// src/plugin.ts
+import z from "@deepseek-ai/schemastery";
+import "@deepseek-ai/dsh-user-approval";
+import "@deepseek-ai/dsh-user-questions";
 
 // src/scope/index.ts
 import { createHash as createHash4 } from "node:crypto";
@@ -4216,6 +4221,11 @@ function assertToolResultBudget(value) {
     throw new Error("MCP structured response exceeds the one MiB response budget; narrow the request or use pagination");
   }
 }
+function assertStringWithin(label, value, maxBytes) {
+  positiveLimit(label, maxBytes, "bytes");
+  if (typeof value !== "string") throw new Error(`${label} must be a string`);
+  if (Buffer.byteLength(value, "utf8") > maxBytes) throw exceeded(label, maxBytes, "bytes");
+}
 var ByteBudget = class {
   constructor(label, maxBytes) {
     this.label = label;
@@ -5456,9 +5466,9 @@ async function validatePack(input, options = {}) {
       throw new Error("Pack validation managed-tree identity changed during bounded enumeration");
     }
     childNames.sort((left, right) => left.localeCompare(right, "en-US"));
-    for (const name of childNames) {
+    for (const name2 of childNames) {
       budget.deadline.check();
-      const lexical = resolve(directory, name);
+      const lexical = resolve(directory, name2);
       const relativePath = relative(root, lexical).replaceAll(sep, "/");
       await options.io?.beforeManagedDirectoryEntry?.(relativePath, depth);
       budget.deadline.check();
@@ -5582,22 +5592,22 @@ async function validatePack(input, options = {}) {
         errors.push(validationDiagnostic("derived_block_hash_mismatch", diagnosticPath, `Derived block ${derivedBlock.id} content hash does not match its marker`));
       }
     }
-    for (const managedBlock of managed) {
+    for (const managedBlock2 of managed) {
       consumeWork();
-      mappedRecordIds.add(managedBlock.id);
-      managedBlockOwners.set(managedBlock.id, document.id);
-      const priorLocation = managedBlockLocations.get(managedBlock.id);
+      mappedRecordIds.add(managedBlock2.id);
+      managedBlockOwners.set(managedBlock2.id, document.id);
+      const priorLocation = managedBlockLocations.get(managedBlock2.id);
       if (priorLocation) {
-        errors.push(validationDiagnostic("managed_block_duplicate", diagnosticPath, `Managed block ${managedBlock.id} also appears at ${priorLocation}`));
+        errors.push(validationDiagnostic("managed_block_duplicate", diagnosticPath, `Managed block ${managedBlock2.id} also appears at ${priorLocation}`));
       } else {
-        managedBlockLocations.set(managedBlock.id, diagnosticPath);
+        managedBlockLocations.set(managedBlock2.id, diagnosticPath);
       }
-      const actualHash = `sha256:${createHash("sha256").update(managedBlock.content, "utf8").digest("hex")}`;
-      if (actualHash !== managedBlock.declaredHash) {
+      const actualHash = `sha256:${createHash("sha256").update(managedBlock2.content, "utf8").digest("hex")}`;
+      if (actualHash !== managedBlock2.declaredHash) {
         errors.push(validationDiagnostic(
           "managed_block_hash_mismatch",
           diagnosticPath,
-          `Managed block ${managedBlock.id} content hash does not match its marker`
+          `Managed block ${managedBlock2.id} content hash does not match its marker`
         ));
       }
     }
@@ -6666,9 +6676,9 @@ async function validateOwnedPublicationWindow(layout, target, targetMetadata, ex
     const entries = await readdir(parent.path);
     const matchingTemporaries = [];
     let enumerationChurn = false;
-    for (const name of entries) {
-      if (!/^\.[a-f0-9-]{36}\.tmp$/iu.test(name)) continue;
-      const temporary = join(parent.path, name);
+    for (const name2 of entries) {
+      if (!/^\.[a-f0-9-]{36}\.tmp$/iu.test(name2)) continue;
+      const temporary = join(parent.path, name2);
       await hooks.beforeEnumeratedTemporaryStat?.(temporary, target);
       let metadata;
       try {
@@ -7713,7 +7723,7 @@ function canReuseRecoveryReservation(hooks) {
     "afterRemovalIntentLink",
     "writeRemovalIntentChunk"
   ]);
-  return Object.entries(hooks).every(([name, value]) => value === void 0 || allowedOutsideRecovery.has(name));
+  return Object.entries(hooks).every(([name2, value]) => value === void 0 || allowedOutsideRecovery.has(name2));
 }
 function parseExactRemovalIntent(layout, intentPath, value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Exact-removal intent is not an object");
@@ -10090,8 +10100,8 @@ function jsonLines(values) {
 }
 function structuredSnapshotId(sections) {
   const digest = createHash3("sha256");
-  for (const [name, values] of sections) {
-    digest.update(`${name}\0${values.length}\0`, "utf8");
+  for (const [name2, values] of sections) {
+    digest.update(`${name2}\0${values.length}\0`, "utf8");
     for (const value of values) {
       const serialized = JSON.stringify(canonicalSnapshotValue(value));
       digest.update(`${Buffer.byteLength(serialized, "utf8")}\0`, "ascii");
@@ -11243,8 +11253,8 @@ var defaultScopePruneLimits = Object.freeze({
   maxProjectBytes: scopeProjectByteLimit,
   maxGlobalBytes: scopeGlobalByteLimit
 });
-function pruneLimit(name, value) {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative safe integer`);
+function pruneLimit(name2, value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${name2} must be a non-negative safe integer`);
   return value;
 }
 function scopePruneLockTarget(layout) {
@@ -12067,14 +12077,14 @@ async function discoverTracked(scope, state) {
     return;
   }
   names.sort((left, right) => left.localeCompare(right, "en-US"));
-  for (const name of names) {
-    if (!checkDiscoveryBudget(state, name)) break;
-    if (generatedPath(name)) continue;
-    if (!safeRepositoryPath(name)) {
-      recordDiscoveryOmission(state, name.slice(0, 4096), "unsafe");
+  for (const name2 of names) {
+    if (!checkDiscoveryBudget(state, name2)) break;
+    if (generatedPath(name2)) continue;
+    if (!safeRepositoryPath(name2)) {
+      recordDiscoveryOmission(state, name2.slice(0, 4096), "unsafe");
       continue;
     }
-    const candidate = resolve5(scope.repositoryRoot, ...name.split("/"));
+    const candidate = resolve5(scope.repositoryRoot, ...name2.split("/"));
     if (!isInside(scope.repositoryRoot, candidate) || !isInside(scope.target, candidate)) continue;
     if (!addDiscoveredFile(state, candidate)) break;
   }
@@ -12225,8 +12235,8 @@ function differences(current, previous, budget) {
   if (Object.keys(prior).length > (budget?.maxFiles ?? resolveKeeperLimits().scan.maxFiles)) {
     throw new Error(`Previous snapshot files exceed the file limit of ${budget?.maxFiles ?? resolveKeeperLimits().scan.maxFiles}`);
   }
-  const currentByKey = new Map(Object.entries(current).map(([path, fingerprint]) => [pathKey(path), { path, fingerprint }]));
-  const priorByKey = new Map(Object.entries(prior).map(([path, fingerprint]) => [pathKey(path), { path, fingerprint }]));
+  const currentByKey = new Map(Object.entries(current).map(([path, fingerprint2]) => [pathKey(path), { path, fingerprint: fingerprint2 }]));
+  const priorByKey = new Map(Object.entries(prior).map(([path, fingerprint2]) => [pathKey(path), { path, fingerprint: fingerprint2 }]));
   const changed = [...currentByKey.entries()].flatMap(([key, value]) => {
     const earlier = priorByKey.get(key);
     return earlier && earlier.fingerprint !== value.fingerprint ? [value.path] : [];
@@ -12368,18 +12378,18 @@ function scopeInput(input) {
 function asArray(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : typeof value === "string" ? [value] : [];
 }
-function boundedInteger(value, fallback, maximum, name) {
+function boundedInteger(value, fallback, maximum, name2) {
   if (value === void 0) return fallback;
   if (!Number.isSafeInteger(value) || Number(value) < 1 || Number(value) > maximum) {
-    throw new Error(`${name} must be an integer between 1 and ${maximum}`);
+    throw new Error(`${name2} must be an integer between 1 and ${maximum}`);
   }
   return Number(value);
 }
 async function manifestFor(scope, options, budget) {
   const packRoot = await safePackRoot(scope);
   if (!packRoot) return void 0;
-  for (const name of ["manifest.json", "project-design-manifest.json"]) {
-    const candidate = await safeManifestFile(packRoot, name);
+  for (const name2 of ["manifest.json", "project-design-manifest.json"]) {
+    const candidate = await safeManifestFile(packRoot, name2);
     if (candidate.kind === "missing") continue;
     if (candidate.kind === "unsafe") return void 0;
     const bytes = await readBoundedRepositoryMetadata(candidate.path, packRoot.canonical, options, budget);
@@ -12522,9 +12532,9 @@ function revisionFiles(value, maximumEntries = resolveKeeperLimits().scan.maxFil
   const entries = Object.entries(candidate);
   if (entries.length > maximumEntries) throw new Error(`Source revision files exceed the file limit of ${maximumEntries}`);
   const result = {};
-  for (const [path, fingerprint] of entries) {
+  for (const [path, fingerprint2] of entries) {
     deadline?.check();
-    if (typeof fingerprint === "string" && safeRepositoryPath(path)) result[path] = fingerprint;
+    if (typeof fingerprint2 === "string" && safeRepositoryPath(path)) result[path] = fingerprint2;
   }
   return result;
 }
@@ -12831,8 +12841,8 @@ async function safePackRoot(scope) {
     return void 0;
   }
 }
-async function safeManifestFile(packRoot, name) {
-  const lexicalPath = resolve5(packRoot.lexical, name);
+async function safeManifestFile(packRoot, name2) {
+  const lexicalPath = resolve5(packRoot.lexical, name2);
   if (!isInside(packRoot.lexical, lexicalPath)) return { kind: "unsafe" };
   let metadata;
   try {
@@ -15987,20 +15997,20 @@ var claimInitializationEntryPattern = new RegExp(`^\\.claim-${uuidV4Pattern}\\.t
 var releasedClaimEntryPattern = /^(\.publish-.+\.json)\.release-[a-f0-9]{32}$/u;
 var maximumInventoryEntries = keeperLimits.changesets.maxPairsGlobal * 4;
 var pairPublicationEntryHeadroom = 4;
-function parseChangesetEntryName(name) {
-  const signature2 = name.endsWith(".sig.json");
-  if (!signature2 && !name.endsWith(".json")) return void 0;
-  const id = name.slice(0, signature2 ? -".sig.json".length : -".json".length);
+function parseChangesetEntryName(name2) {
+  const signature2 = name2.endsWith(".sig.json");
+  if (!signature2 && !name2.endsWith(".json")) return void 0;
+  const id = name2.slice(0, signature2 ? -".sig.json".length : -".json".length);
   if (!isCanonicalUuid(id)) return void 0;
   return { id, kind: signature2 ? "signature" : "changeset" };
 }
-function publicationClaimTargetName(name) {
-  if (!name.startsWith(".publish-")) return void 0;
-  const targetName = name.slice(".publish-".length);
+function publicationClaimTargetName(name2) {
+  if (!name2.startsWith(".publish-")) return void 0;
+  const targetName = name2.slice(".publish-".length);
   return parseChangesetEntryName(targetName) ? targetName : void 0;
 }
-function isReleasedClaimEntry(name) {
-  const match = releasedClaimEntryPattern.exec(name);
+function isReleasedClaimEntry(name2) {
+  const match = releasedClaimEntryPattern.exec(name2);
   return Boolean(match && publicationClaimTargetName(match[1]));
 }
 var cacheStoreLocks = /* @__PURE__ */ new Map();
@@ -16771,15 +16781,15 @@ function requestedChanges(value) {
     if (typeof input.path !== "string") throw new Error(`Change ${index2} path is required`);
     const managed = input.managedBlock;
     const managedValue = typeof managed === "object" && managed !== null && !Array.isArray(managed) ? managed : void 0;
-    const managedBlock = managedValue && typeof managedValue.recordId === "string" && typeof managedValue.content === "string" ? { recordId: managedValue.recordId, content: managedValue.content } : managedValue && typeof managedValue.recordId === "string" && managedValue.delete === true ? { recordId: managedValue.recordId, delete: true } : void 0;
-    const variants = [typeof input.content === "string", input.delete === true, Boolean(managedBlock)].filter(Boolean).length;
+    const managedBlock2 = managedValue && typeof managedValue.recordId === "string" && typeof managedValue.content === "string" ? { recordId: managedValue.recordId, content: managedValue.content } : managedValue && typeof managedValue.recordId === "string" && managedValue.delete === true ? { recordId: managedValue.recordId, delete: true } : void 0;
+    const variants = [typeof input.content === "string", input.delete === true, Boolean(managedBlock2)].filter(Boolean).length;
     if (variants !== 1) throw new Error(`Change ${index2} must specify exactly one of content, delete, or managedBlock`);
-    if (managedBlock && !stableId.safeParse(managedBlock.recordId).success) throw new Error(`Change ${index2} recordId is not stable`);
+    if (managedBlock2 && !stableId.safeParse(managedBlock2.recordId).success) throw new Error(`Change ${index2} recordId is not stable`);
     return {
       path: input.path,
       ...typeof input.content === "string" ? { content: input.content } : {},
       ...input.delete === true ? { delete: true } : {},
-      ...managedBlock ? { managedBlock } : {},
+      ...managedBlock2 ? { managedBlock: managedBlock2 } : {},
       ...typeof input.expectedContentHash === "string" ? { expectedContentHash: input.expectedContentHash } : {}
     };
   });
@@ -16953,7 +16963,7 @@ function derivedReplacementAllowed(original, candidate, migratingToV2, allowSche
   if (before.blockIds.size !== after.blockIds.size) return false;
   const beforeHashes = managedBlockHashes(original);
   const afterHashes = managedBlockHashes(candidate);
-  return [...beforeHashes].every(([id, fingerprint]) => afterHashes.get(id) === fingerprint);
+  return [...beforeHashes].every(([id, fingerprint2]) => afterHashes.get(id) === fingerprint2);
 }
 async function migrationPreservationDiagnostics(root, currentPack, candidatePack, overlay, readCurrentDocument) {
   if (!(/* @__PURE__ */ new Set(["1.0", "2.0"])).has(String(currentPack.schemaVersion)) || candidatePack.schemaVersion !== "3.0") return [];
@@ -16977,9 +16987,9 @@ async function migrationPreservationDiagnostics(root, currentPack, candidatePack
         diagnostics.push({ code: "migration_document_missing", path, message: `Migration document is missing: ${path}` });
         continue;
       }
-      for (const [id, fingerprint] of managedBlockHashes(contents)) {
+      for (const [id, fingerprint2] of managedBlockHashes(contents)) {
         if (blocks.has(id)) diagnostics.push({ code: "migration_record_duplicate", path, message: `Migration record block is duplicated: ${id}` });
-        else blocks.set(id, fingerprint);
+        else blocks.set(id, fingerprint2);
       }
     }
     return blocks;
@@ -17070,7 +17080,7 @@ async function manifestFingerprint(root, budget) {
 async function sourceFingerprint(source, options, budget) {
   if (!source.root) throw new Error("Source fingerprint requires a repository root");
   await validateManagedRoots(source.root);
-  return Object.fromEntries(Object.entries((await snapshotForFingerprint(source, options, budget)).files).map(([path, fingerprint]) => [path.replaceAll("\\", "/"), fingerprint]));
+  return Object.fromEntries(Object.entries((await snapshotForFingerprint(source, options, budget)).files).map(([path, fingerprint2]) => [path.replaceAll("\\", "/"), fingerprint2]));
 }
 function createExactSourceReadBudget(limits) {
   return {
@@ -17353,11 +17363,11 @@ function parseRecoveryFileRecord(value) {
   }
   return value;
 }
-function parseRecoverySnapshotRecord(value, name, canonicalRoot, activeChangeset) {
+function parseRecoverySnapshotRecord(value, name2, canonicalRoot, activeChangeset) {
   if (!exactObject2(value, ["version", "root", "changesetId", "createdAt", "files"]) || value.version !== 1 || value.root !== canonicalRoot || typeof value.changesetId !== "string" || !Number.isSafeInteger(value.createdAt) || Number(value.createdAt) < 0 || !value.files || typeof value.files !== "object" || Array.isArray(value.files)) {
     throw new Error("Recovery snapshot has an unexpected schema");
   }
-  const match = recoverySnapshotNamePattern.exec(name);
+  const match = recoverySnapshotNamePattern.exec(name2);
   if (!match || Number(match[1]) !== value.createdAt || match[2] !== value.changesetId) {
     throw new Error("Recovery snapshot filename does not bind its metadata");
   }
@@ -17406,7 +17416,7 @@ async function readExactRecoveryBytes(handle, size) {
   }
   return contents;
 }
-async function readRecoverySnapshot(cache, path, name, canonicalRoot, activeChangeset) {
+async function readRecoverySnapshot(cache, path, name2, canonicalRoot, activeChangeset) {
   try {
     await validateCacheFile(cache, path, false);
     const identity = await captureSecurePathIdentity(cache, path, "file");
@@ -17439,9 +17449,9 @@ async function readRecoverySnapshot(cache, path, name, canonicalRoot, activeChan
     } catch {
       throw new Error("Recovery snapshot JSON is invalid");
     }
-    const value = parseRecoverySnapshotRecord(parsed, name, canonicalRoot, activeChangeset);
+    const value = parseRecoverySnapshotRecord(parsed, name2, canonicalRoot, activeChangeset);
     return {
-      name,
+      name: name2,
       path,
       createdAt: value.createdAt,
       changesetId: value.changesetId,
@@ -17451,7 +17461,7 @@ async function readRecoverySnapshot(cache, path, name, canonicalRoot, activeChan
       value
     };
   } catch (error) {
-    throw new Error(`Recovery snapshot metadata is invalid: ${name}`, { cause: error });
+    throw new Error(`Recovery snapshot metadata is invalid: ${name2}`, { cause: error });
   }
 }
 async function exactRemoveRecoverySnapshot(cache, snapshot2, canonicalRoot) {
@@ -17576,12 +17586,12 @@ async function storeRecoverySnapshot(cache, changeset, now, hooks = {}) {
   const projectKey = createHash9("sha256").update(canonicalRoot).digest("hex");
   const directory = join7(cache.snapshots, projectKey);
   await createSecureCacheDirectory(cache, directory);
-  let names = (await readdir2(directory)).filter((name) => name.endsWith(".json"));
+  let names = (await readdir2(directory)).filter((name2) => name2.endsWith(".json"));
   if (names.length > recoverySnapshotMaxObservedFiles) {
     throw new Error("Recovery snapshot directory exceeds its bounded entry limit");
   }
-  await validateCacheFiles(cache, names.map((name) => join7(directory, name)));
-  let snapshots = await Promise.all(names.map((name) => readRecoverySnapshot(cache, join7(directory, name), name, canonicalRoot, changeset)));
+  await validateCacheFiles(cache, names.map((name2) => join7(directory, name2)));
+  let snapshots = await Promise.all(names.map((name2) => readRecoverySnapshot(cache, join7(directory, name2), name2, canonicalRoot, changeset)));
   let active = snapshots.filter(({ changesetId }) => changesetId === changeset.changesetId).sort((left, right) => right.createdAt - left.createdAt || right.name.localeCompare(left.name, "en-US"));
   if (active.some((snapshot2) => !isDeepStrictEqual(snapshot2.value.files, files))) {
     throw new Error("Active recovery snapshot does not match the currently authenticated pre-state");
@@ -17597,8 +17607,8 @@ async function storeRecoverySnapshot(cache, changeset, now, hooks = {}) {
   if (active.length === 0) {
     await hooks.beforeRecoverySnapshotPublish?.(canonicalRoot, changeset.changesetId);
     for (const captured of capturedFiles) await captured.validate();
-    const name = `${now}-${changeset.changesetId}-${randomUUID3()}.json`;
-    const path = join7(directory, name);
+    const name2 = `${now}-${changeset.changesetId}-${randomUUID3()}.json`;
+    const path = join7(directory, name2);
     await persistJson(cache, path, {
       version: 1,
       root: canonicalRoot,
@@ -17606,15 +17616,15 @@ async function storeRecoverySnapshot(cache, changeset, now, hooks = {}) {
       createdAt: now,
       files
     });
-    const published = await readRecoverySnapshot(cache, path, name, canonicalRoot, changeset);
+    const published = await readRecoverySnapshot(cache, path, name2, canonicalRoot, changeset);
     snapshots.push(published);
     active = [published];
   }
   const newest = [...snapshots].sort((left, right) => right.createdAt - left.createdAt || right.name.localeCompare(left.name, "en-US"));
-  const retained = new Set(newest.slice(0, 10).map(({ name }) => name));
+  const retained = new Set(newest.slice(0, 10).map(({ name: name2 }) => name2));
   const authoritative = active[0];
   if (!retained.has(authoritative.name)) {
-    const replaceable = newest.filter(({ name, changesetId }) => retained.has(name) && changesetId !== changeset.changesetId).sort((left, right) => left.createdAt - right.createdAt || left.name.localeCompare(right.name, "en-US"))[0];
+    const replaceable = newest.filter(({ name: name2, changesetId }) => retained.has(name2) && changesetId !== changeset.changesetId).sort((left, right) => left.createdAt - right.createdAt || left.name.localeCompare(right.name, "en-US"))[0];
     if (!replaceable) throw new Error("Active recovery snapshot retention is ambiguous");
     retained.delete(replaceable.name);
     retained.add(authoritative.name);
@@ -17622,9 +17632,9 @@ async function storeRecoverySnapshot(cache, changeset, now, hooks = {}) {
   for (const snapshot2 of snapshots) {
     if (!retained.has(snapshot2.name)) await exactRemoveRecoverySnapshot(cache, snapshot2, canonicalRoot);
   }
-  names = (await readdir2(directory)).filter((name) => name.endsWith(".json"));
+  names = (await readdir2(directory)).filter((name2) => name2.endsWith(".json"));
   if (names.length > 10) throw new Error("Recovery snapshot retention did not converge to ten files");
-  const activeNames = names.filter((name) => recoverySnapshotNamePattern.exec(name)?.[2] === changeset.changesetId);
+  const activeNames = names.filter((name2) => recoverySnapshotNamePattern.exec(name2)?.[2] === changeset.changesetId);
   if (activeNames.length !== 1 || activeNames[0] !== authoritative.name) {
     throw new Error("Active recovery snapshot retention did not converge to one authoritative file");
   }
@@ -18460,18 +18470,18 @@ function createTransactionService(options = {}) {
       let content = original?.toString("utf8") ?? "";
       const managedBlocks2 = [];
       for (const change of targetChanges) {
-        const expectedContentHash = change.expectedContentHash ?? (typeof input.expectedContentHash === "string" ? input.expectedContentHash : void 0);
+        const expectedContentHash2 = change.expectedContentHash ?? (typeof input.expectedContentHash === "string" ? input.expectedContentHash : void 0);
         const merged = mergeManagedBlock(
           content,
           change.managedBlock,
-          expectedContentHash
+          expectedContentHash2
         );
         if (merged.conflict) {
           conflicts.push(`${path}: ${merged.conflict}`);
           break;
         }
         content = merged.content;
-        managedBlocks2.push({ ...change.managedBlock, ...expectedContentHash ? { expectedContentHash } : {} });
+        managedBlocks2.push({ ...change.managedBlock, ...expectedContentHash2 ? { expectedContentHash: expectedContentHash2 } : {} });
       }
       if (conflicts.some((conflict) => conflict.startsWith(`${path}:`))) continue;
       persisted.push({
@@ -19176,17 +19186,478 @@ function createProjectDesignKeeper(options = {}) {
   };
 }
 var projectDesignKeeper = createProjectDesignKeeper();
+
+// src/tools/keeper-tools.ts
+import { defineTool } from "@deepseek-ai/dsh-tools";
+
+// src/tools/schemas.ts
+function boundedString(maxBytes, minimum = 0) {
+  return external_exports.string().min(minimum).max(maxBytes).superRefine((value, context) => {
+    try {
+      assertStringWithin("tool string", value, maxBytes);
+    } catch (error) {
+      context.addIssue({ code: external_exports.ZodIssueCode.custom, message: error instanceof Error ? error.message : "Tool string exceeds its byte limit" });
+    }
+  });
+}
+var nonemptyString = boundedString(4 * 1024, 1);
+var nonemptyQuery = boundedString(32 * 1024, 1);
+var queryString = boundedString(32 * 1024);
+var proposedFileContent = boundedString(keeperLimits.preview.maxFileBytes);
+var fingerprint = external_exports.string().regex(/^sha256:[a-f0-9]{64}$/u);
+var fingerprintRecord = external_exports.record(fingerprint);
+var snapshotInput = external_exports.union([
+  fingerprintRecord,
+  external_exports.object({ files: fingerprintRecord }).passthrough()
+]);
+var sourceRevisionInput = external_exports.object({ files: fingerprintRecord }).passthrough();
+var changesetAdapterInput = external_exports.object({ changesetId: nonemptyString }).strict();
+var stringOrStrings = external_exports.union([nonemptyString, external_exports.array(nonemptyString).nonempty().max(1e3)]);
+var scopeFields = {
+  root: nonemptyString.optional(),
+  path: nonemptyString.optional()
+};
+var pageLimit = external_exports.number().int().min(1).max(1e3);
+function scoped(shape) {
+  return external_exports.object({ ...scopeFields, ...shape }).strict();
+}
+var scanInput = scoped({
+  previousSnapshot: snapshotInput.optional(),
+  view: external_exports.enum(["summary", "files", "evidence"]).optional(),
+  cursor: nonemptyString.optional(),
+  limit: pageLimit.optional()
+});
+var searchInput = scoped({
+  query: nonemptyQuery,
+  domain: stringOrStrings.optional(),
+  domains: stringOrStrings.optional(),
+  status: stringOrStrings.optional(),
+  statuses: stringOrStrings.optional()
+});
+var driftInput = scoped({
+  previousSnapshot: snapshotInput.optional(),
+  sourceRevision: sourceRevisionInput.optional(),
+  pack: external_exports.record(external_exports.unknown()).optional(),
+  requiredEvidence: external_exports.array(nonemptyString).max(keeperLimits.pack.maxEvidencePerRecord).optional(),
+  view: external_exports.enum(["summary", "details"]).optional(),
+  cursor: nonemptyString.optional(),
+  limit: pageLimit.optional()
+});
+var contextInput = scoped({
+  query: queryString.optional(),
+  paths: external_exports.array(nonemptyString).max(1e3).optional(),
+  path: nonemptyString.optional(),
+  module: stringOrStrings.optional(),
+  modules: stringOrStrings.optional(),
+  maxRecords: external_exports.number().int().min(1).max(100).optional(),
+  maxEvidence: external_exports.number().int().min(1).max(500).optional()
+});
+var historyInput = external_exports.object({
+  root: nonemptyString,
+  query: queryString.optional(),
+  recordIds: external_exports.array(nonemptyString).max(1e3).optional(),
+  paths: external_exports.array(nonemptyString).max(1e3).optional(),
+  modules: external_exports.array(nonemptyString).max(1e3).optional(),
+  includeTombstones: external_exports.boolean().optional(),
+  cursor: nonemptyString.optional(),
+  limit: external_exports.number().int().min(1).max(500).optional()
+}).strict();
+var redundancyInput = external_exports.object({
+  root: nonemptyString,
+  query: queryString.optional(),
+  paths: external_exports.array(nonemptyString).max(1e3).optional(),
+  modules: external_exports.array(nonemptyString).max(1e3).optional()
+}).strict();
+var validateInput = external_exports.object({
+  root: nonemptyString,
+  pack: external_exports.record(external_exports.unknown())
+}).strict();
+var managedBlock = external_exports.union([
+  external_exports.object({ recordId: nonemptyString, content: proposedFileContent }).strict(),
+  external_exports.object({ recordId: nonemptyString, delete: external_exports.literal(true) }).strict()
+]);
+var expectedContentHash = external_exports.string().regex(/^sha256:[a-f0-9]{64}$/u);
+var requestedChange = external_exports.union([
+  external_exports.object({
+    path: nonemptyString,
+    content: proposedFileContent,
+    expectedContentHash: expectedContentHash.optional()
+  }).strict(),
+  external_exports.object({
+    path: nonemptyString,
+    delete: external_exports.literal(true),
+    expectedContentHash: expectedContentHash.optional()
+  }).strict(),
+  external_exports.object({
+    path: nonemptyString,
+    managedBlock,
+    expectedContentHash: expectedContentHash.optional()
+  }).strict()
+]);
+var previewInput = external_exports.object({
+  root: nonemptyString,
+  path: nonemptyString.optional(),
+  changes: external_exports.array(requestedChange).nonempty().max(keeperLimits.preview.maxChanges),
+  expectedContentHash: expectedContentHash.optional(),
+  pack: external_exports.record(external_exports.unknown()).optional(),
+  analysisId: nonemptyString.optional(),
+  redundancyDecisions: external_exports.array(external_exports.object({
+    candidateId: nonemptyString,
+    decision: external_exports.enum(["merge", "keep-separate", "defer"]),
+    survivorId: nonemptyString.optional()
+  }).strict()).nonempty().max(keeperLimits.redundancy.maxDecisions).optional()
+}).strict();
+var applyInput = external_exports.object({
+  root: nonemptyString,
+  changesetId: nonemptyString.optional(),
+  changeset: changesetAdapterInput.optional()
+}).strict();
+function parseToolInput(schema, input) {
+  return schema.parse(input);
+}
+
+// src/tools/apply-approval.ts
+function approvalMessage(binding) {
+  const escapeFormatControls = (value) => value.replace(
+    /[\u007f-\u009f\p{Cf}\p{Zl}\p{Zp}]/gu,
+    (character) => `\\u${character.codePointAt(0).toString(16).padStart(4, "0")}`
+  );
+  const summaryJson = escapeFormatControls(JSON.stringify({
+    root: binding.root,
+    changesetId: binding.changesetId,
+    diffDigest: binding.diffDigest,
+    expiresAt: new Date(binding.expiresAt).toISOString(),
+    summary: binding.summary,
+    paths: binding.paths,
+    archiveActions: binding.archiveActions,
+    semanticDecisionIds: binding.semanticDecisionIds
+  }, null, 2));
+  const message = [
+    "Approve this authenticated Project Design Keeper changeset?",
+    summaryJson,
+    `Select approve and type the final eight hexadecimal digest characters: ${binding.diffDigest.slice(-8)}`
+  ].join("\n");
+  assertStringWithin("Approval summary", message, 1024 * 1024);
+  return message;
+}
+function approvalDigestSuffix(binding) {
+  return binding.diffDigest.slice(-8);
+}
+var requestIdentityBase = Object.freeze({ source: "dsh-plugin" });
+async function elicitApplyApproval(services, issueAuthorization, binding, identity) {
+  if (identity.agent === void 0) {
+    throw new Error("Apply approval requires a live calling agent; refusing to apply without one");
+  }
+  const requestIdentity = Object.freeze({
+    ...requestIdentityBase,
+    callId: identity.callId,
+    agentId: identity.agent.id
+  });
+  const outcome = await services.approval.request({
+    agent: identity.agent,
+    toolName: "apply_update",
+    callId: identity.callId,
+    reason: approvalMessage(binding),
+    signal: identity.signal
+  });
+  if (outcome !== "allowed-once") {
+    throw new Error(approvalOutcomeMessage(outcome));
+  }
+  if (services.requireDigestConfirmation) {
+    await confirmDigest(services, binding, identity);
+  }
+  return {
+    authorization: issueAuthorization(binding, requestIdentity),
+    requestIdentity
+  };
+}
+function approvalOutcomeMessage(outcome) {
+  switch (outcome) {
+    case "rejected":
+      return "Apply approval was declined";
+    case "cancelled":
+      return "Apply approval was cancelled";
+    case "unavailable":
+      return "Apply approval is unavailable in this session (no answerer); the apply request is rejected";
+    default:
+      return `Apply approval returned an unexpected outcome: ${outcome}`;
+  }
+}
+async function confirmDigest(services, binding, identity) {
+  const userQuestions = services.userQuestions;
+  if (userQuestions === void 0) {
+    throw new Error(
+      "Digest confirmation requires the user-questions capability, which is not mounted in this session; the apply request is rejected. Disable digest confirmation only when a trusted approval provider is used."
+    );
+  }
+  const suffix = approvalDigestSuffix(binding);
+  const summaryJson = JSON.stringify({
+    root: binding.root,
+    changesetId: binding.changesetId,
+    diffDigest: binding.diffDigest,
+    expiresAt: new Date(binding.expiresAt).toISOString(),
+    summary: binding.summary,
+    paths: binding.paths,
+    archiveActions: binding.archiveActions,
+    semanticDecisionIds: binding.semanticDecisionIds
+  }, null, 2);
+  const answer = await userQuestions.ask({
+    agent: identity.agent,
+    signal: identity.signal,
+    questions: [{
+      id: "keeper-apply-digest",
+      header: "Apply approval",
+      question: `Approve this Project Design Keeper changeset? Type the final eight hexadecimal digest characters (${suffix}) to approve, or type "decline" to refuse.`,
+      detail: summaryJson
+    }]
+  });
+  const item = answer.answers.find((entry) => entry.id === "keeper-apply-digest");
+  const custom2 = item?.custom?.trim().toLowerCase() ?? "";
+  if (custom2 === "decline") throw new Error("Apply approval was declined");
+  if (!/^[a-f0-9]{8}$/u.test(custom2) || custom2 !== suffix) {
+    throw new Error("Apply approval digest confirmation does not match");
+  }
+}
+
+// src/tools/keeper-tools.ts
+var readOnly = {
+  schema: { type: "object", additionalProperties: true },
+  render: (_args, value) => [{ type: "text", text: JSON.stringify(value, null, 2) }]
+};
+function requireScope(input) {
+  if (!input.root && !input.path) throw new Error("A repository root or path is required");
+}
+function keeperOperation(schema, operation, scopeCheck = false) {
+  return async (args, _exec) => {
+    assertSerializedWithin("Tool arguments", args, keeperLimits.mcpArgumentBytes);
+    const input = parseToolInput(schema, args);
+    if (scopeCheck) requireScope(input);
+    const value = await operation(input);
+    assertToolResultBudget(value);
+    return value;
+  };
+}
+function requireApplyChangeset(input) {
+  const adapter = input.changeset;
+  if (!input.changesetId && !adapter?.changesetId) throw new Error("A changeset id is required");
+}
+function registerKeeperTools(register, service, approval) {
+  register(defineTool({
+    name: "scan_scope",
+    description: "Scan a repository scope and return a bounded summary or cursor-paged files/evidence for an immutable snapshot.",
+    parameters: {
+      root: { type: "string", description: "Repository root path; defaults to the repository containing path." },
+      path: { type: "string", description: "Explicit file or directory path to scope." },
+      previousSnapshot: { type: "json", description: "Prior immutable snapshot to compare against." },
+      view: { type: "string", enum: ["summary", "files", "evidence"], description: "Which bounded projection to return." },
+      cursor: { type: "string", description: "Opaque pagination cursor from the previous page." },
+      limit: { type: "number", description: "Maximum page size (1-1000)." }
+    },
+    output: readOnly,
+    execute: keeperOperation(scanInput, service.scanScope, true)
+  }));
+  register(defineTool({
+    name: "search_evidence",
+    description: "Search repository evidence by query and optional design classifications.",
+    parameters: {
+      root: { type: "string", description: "Repository root path; defaults to the repository containing path." },
+      path: { type: "string", description: "Explicit file or directory path to search within." },
+      query: { type: "string", required: true, description: "Search query text." },
+      domain: { type: "string", description: "Design domain filter (string or array)." },
+      domains: { type: "string", description: "Design domain filter (string or array)." },
+      status: { type: "string", description: "Evidence status filter (string or array)." },
+      statuses: { type: "string", description: "Evidence status filter (string or array)." }
+    },
+    output: readOnly,
+    execute: keeperOperation(searchInput, service.searchEvidence, true)
+  }));
+  register(defineTool({
+    name: "detect_drift",
+    description: "Compare current source evidence with a prior snapshot or design pack.",
+    parameters: {
+      root: { type: "string", description: "Repository root path; defaults to the repository containing path." },
+      path: { type: "string", description: "Explicit file or directory path to scope." },
+      previousSnapshot: { type: "json", description: "Prior immutable snapshot to compare against." },
+      sourceRevision: { type: "json", description: "Source revision fingerprints." },
+      pack: { type: "object", additionalProperties: true, description: "Design pack whose required evidence is checked." },
+      requiredEvidence: { type: "array", items: { type: "string" }, description: "Evidence selectors that must be supported." },
+      view: { type: "string", enum: ["summary", "details"], description: "Detail level of the drift report." },
+      cursor: { type: "string", description: "Opaque pagination cursor from the previous page." },
+      limit: { type: "number", description: "Maximum page size (1-1000)." }
+    },
+    output: readOnly,
+    execute: keeperOperation(driftInput, service.detectDrift, true)
+  }));
+  register(defineTool({
+    name: "query_context",
+    description: "Return the smallest relevant design context for a task, path, or module.",
+    parameters: {
+      root: { type: "string", description: "Repository root path; defaults to the repository containing path." },
+      path: { type: "string", description: "Explicit file or directory path whose context is loaded." },
+      query: { type: "string", description: "Free-text relevance query." },
+      paths: { type: "array", items: { type: "string" }, description: "Explicit repository-relative paths to load." },
+      module: { type: "string", description: "Module selector (string or array)." },
+      modules: { type: "string", description: "Module selector (string or array)." },
+      maxRecords: { type: "number", description: "Maximum design records to return (1-100)." },
+      maxEvidence: { type: "number", description: "Maximum evidence entries to return (1-500)." }
+    },
+    output: readOnly,
+    execute: keeperOperation(contextInput, service.queryContext, true)
+  }));
+  register(defineTool({
+    name: "query_history",
+    description: "Query stale, terminal, archived, and optionally tombstoned project-design knowledge.",
+    parameters: {
+      root: { type: "string", required: true, description: "Repository root path." },
+      query: { type: "string", description: "Free-text history query." },
+      recordIds: { type: "array", items: { type: "string" }, description: "Explicit record ids to load." },
+      paths: { type: "array", items: { type: "string" }, description: "Repository-relative paths to filter by." },
+      modules: { type: "array", items: { type: "string" }, description: "Module names to filter by." },
+      includeTombstones: { type: "boolean", description: "Whether tombstoned records are included." },
+      cursor: { type: "string", description: "Opaque pagination cursor from the previous page." },
+      limit: { type: "number", description: "Maximum page size (1-500)." }
+    },
+    output: readOnly,
+    execute: keeperOperation(historyInput, service.queryHistory)
+  }));
+  register(defineTool({
+    name: "analyze_redundancy",
+    description: "Find deterministic semantic-redundancy candidates for explicit Agent and user decisions.",
+    parameters: {
+      root: { type: "string", required: true, description: "Repository root path." },
+      query: { type: "string", description: "Free-text query to focus analysis." },
+      paths: { type: "array", items: { type: "string" }, description: "Repository-relative paths to filter by." },
+      modules: { type: "array", items: { type: "string" }, description: "Module names to filter by." }
+    },
+    output: readOnly,
+    execute: keeperOperation(redundancyInput, service.analyzeRedundancy)
+  }));
+  register(defineTool({
+    name: "preview_update",
+    description: "Validate a proposed managed update, store an expiring change-set in keeper cache, and return its diff and conflicts without changing the project.",
+    parameters: {
+      root: { type: "string", required: true, description: "Repository root path." },
+      path: { type: "string", description: "Optional path constraint for the change-set." },
+      changes: {
+        type: "array",
+        required: true,
+        description: "Proposed changes (write, delete, or managed-block updates).",
+        items: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            path: { type: "string", required: true, description: "Repository-relative output path." },
+            content: { type: "string", description: "Full replacement content." },
+            delete: { type: "boolean", description: "True deletes the path." },
+            managedBlock: {
+              type: "object",
+              additionalProperties: true,
+              description: "Managed project-design block update.",
+              properties: {
+                recordId: { type: "string", required: true },
+                content: { type: "string", description: "Replacement block content." },
+                delete: { type: "boolean", description: "True deletes the managed block." }
+              }
+            },
+            expectedContentHash: { type: "string", description: "sha256:... expected current content hash." }
+          }
+        }
+      },
+      expectedContentHash: { type: "string", description: "sha256:... expected current content hash." },
+      pack: { type: "object", additionalProperties: true, description: "Candidate design pack." },
+      analysisId: { type: "string", description: "Id pairing redundancy decisions with the pack." },
+      redundancyDecisions: {
+        type: "array",
+        description: "User decisions on redundancy candidates.",
+        items: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            candidateId: { type: "string", required: true },
+            decision: { type: "string", required: true, enum: ["merge", "keep-separate", "defer"] },
+            survivorId: { type: "string" }
+          }
+        }
+      }
+    },
+    output: readOnly,
+    execute: keeperOperation(previewInput, service.previewUpdate)
+  }));
+  register(defineTool({
+    name: "apply_update",
+    description: "Apply one explicitly confirmed, unexpired change-set with optimistic concurrency and recovery snapshots.",
+    parameters: {
+      root: { type: "string", required: true, description: "Repository root path." },
+      changesetId: { type: "string", description: "Id of the change-set returned by preview_update." },
+      changeset: {
+        type: "object",
+        additionalProperties: true,
+        description: "Change-set adapter (changeset.changesetId).",
+        properties: {
+          changesetId: { type: "string", required: true }
+        }
+      }
+    },
+    output: readOnly,
+    async execute(args, exec) {
+      assertSerializedWithin("Tool arguments", args, keeperLimits.mcpArgumentBytes);
+      const input = parseToolInput(applyInput, args);
+      requireApplyChangeset(input);
+      const binding = await service.inspectChangesetForApproval(input);
+      const { authorization, requestIdentity } = await elicitApplyApproval(
+        approval,
+        service.issueApplyAuthorization,
+        binding,
+        { callId: exec.callId, agent: exec.agent, signal: exec.signal }
+      );
+      const value = await service.applyUpdateDirect(input, authorization, requestIdentity);
+      assertToolResultBudget(value);
+      return value;
+    }
+  }));
+  register(defineTool({
+    name: "validate_pack",
+    description: "Validate a project-design knowledge pack, links, records, evidence, and ownership metadata.",
+    parameters: {
+      root: { type: "string", required: true, description: "Repository root path." },
+      pack: { type: "object", additionalProperties: true, required: true, description: "The design pack to validate." }
+    },
+    output: readOnly,
+    execute: keeperOperation(validateInput, service.validatePack)
+  }));
+}
+
+// src/plugin.ts
+var name = "project-design-keeper";
+var inject = ["tools", "approval"];
+var Config = z.object({
+  cacheDirectory: z.string(),
+  homeDirectory: z.string(),
+  requireDigestConfirmation: z.boolean().default(true),
+  limits: z.any()
+});
+function apply(ctx, config = {}) {
+  const runtime = createProjectDesignKeeper({
+    cacheDirectory: config.cacheDirectory,
+    homeDirectory: config.homeDirectory,
+    limits: config.limits
+  });
+  const userQuestions = ctx.get("userQuestions", false);
+  registerKeeperTools(
+    (tool) => {
+      ctx.tools.register(tool);
+    },
+    runtime,
+    {
+      approval: ctx.approval,
+      ...userQuestions !== void 0 ? { userQuestions } : {},
+      requireDigestConfirmation: config.requireDigestConfirmation ?? true
+    }
+  );
+}
 export {
-  analyzeRedundancy,
-  createProjectDesignKeeper,
-  detectDrift,
-  projectDesignKeeper,
-  queryContext,
-  queryHistory,
-  resolveCacheDirectory,
-  resolveScope,
-  scanScope,
-  searchEvidence,
-  snapshot,
-  validatePack
+  Config,
+  apply,
+  inject,
+  name
 };

@@ -4,7 +4,7 @@ description: "Use when planning or implementing work in a project that contains 
 metadata:
   managed-by: project-design-keeper
 ---
-<!-- project-design-keeper:managed record-id="skill.project-design-context.workflow" content-hash="sha256:09e3390c85ea9058e5e371f25210af69b7204443763ca75b481adb6e205db4da" -->
+<!-- project-design-keeper:managed record-id="skill.project-design-context.workflow" content-hash="sha256:283e023fc6a069c199d8309ce1afa729bf5338a997e7fa3a377a1b7089827699" -->
 # Project Design Context
 
 Read `docs/project-design/index.md` first. For the current task call `query_context { root: <repo>, query: <task>, paths: [...], modules: [...] }`. Use only the paths and modules found by minimum read-only discovery. If the result withholds relevant stale or terminal IDs, call `query_history` for those IDs and treat the result as historical risk, never as a current rule.
@@ -40,5 +40,5 @@ If the user changes normative design, that choice is semantic confirmation, not 
 
 Use `analyze_redundancy` for merge candidates and require a per-candidate `merge`, `keep-separate`, or `defer` decision. Use `query_history` for stale, terminal, archive, or tombstone lookup. Never merge, relocate evidence, archive records, or write a design change without previewing the exact final Schema 3.0 `pack` and obtaining separate confirmation for `apply_update`.
 
-If semantics change after preview, discard the changeset and preview again. If Keeper MCP is unavailable, mapped Markdown may support ordinary read-only context, but all initialization, refresh, archive, preview/apply, and maintenance writes are blocked.
+If semantics change after preview, discard the changeset and preview again. If the keeper tools are unavailable, mapped Markdown may support ordinary read-only context, but all initialization, refresh, archive, preview/apply, and maintenance writes are blocked.
 <!-- /project-design-keeper:managed -->

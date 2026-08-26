@@ -7,9 +7,6 @@ import {
   searchEvidence,
   snapshot
 } from "./scope/index.js";
-import { pathToFileURL } from "node:url";
-import { resolve } from "node:path";
-import { connectStdioServer, createMcpServer } from "./mcp.js";
 import { createTransactionService, resolveCacheDirectory } from "./transactions.js";
 import { validatePack, type ServiceOptions } from "./types/schema.js";
 import { queryHistory } from "./knowledge/history.js";
@@ -23,13 +20,6 @@ export function createProjectDesignKeeper(options: ServiceOptions = {}) {
     limits: options.limits,
     io: options.validationIo
   });
-  const mcpService = {
-    ...scope,
-    queryHistory: (input: Record<string, unknown>) => queryHistory(input, options),
-    analyzeRedundancy: (input: Record<string, unknown>) => analyzeRedundancy(input, options),
-    validatePack: validatePackWithOptions,
-    ...transactions
-  };
   const applyUpdate = async (input: Record<string, unknown>) => {
     if (!trustedApprovalProvider) {
       throw new Error("Direct apply requires a trusted approval provider");
@@ -43,14 +33,14 @@ export function createProjectDesignKeeper(options: ServiceOptions = {}) {
   };
   return {
     ...scope,
-    queryHistory: mcpService.queryHistory,
-    analyzeRedundancy: mcpService.analyzeRedundancy,
+    queryHistory: (input: Record<string, unknown>) => queryHistory(input, options),
+    analyzeRedundancy: (input: Record<string, unknown>) => analyzeRedundancy(input, options),
     validatePack: validatePackWithOptions,
     previewUpdate: transactions.previewUpdate,
     inspectChangesetForApproval: transactions.inspectChangesetForApproval,
-    applyUpdate,
-    createMcpServer: async () => createMcpServer(mcpService),
-    connectStdioServer: async () => connectStdioServer(mcpService)
+    issueApplyAuthorization: transactions.issueApplyAuthorization,
+    applyUpdateDirect: transactions.applyUpdate,
+    applyUpdate
   };
 }
 
@@ -70,16 +60,3 @@ export {
 export type { CandidateModule, ResolvedScope, ScanResult, ScopeInput, ServiceOptions } from "./types/schema.js";
 
 export const projectDesignKeeper = createProjectDesignKeeper();
-
-export function isDirectExecution(metaUrl: string, argv: string[] = process.argv): boolean {
-  if (!argv[1]) return false;
-  return metaUrl === pathToFileURL(resolve(argv[1])).href;
-}
-
-if (isDirectExecution(import.meta.url)) {
-  void projectDesignKeeper.connectStdioServer().catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : "Failed to start Project Design Keeper MCP server";
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
-}

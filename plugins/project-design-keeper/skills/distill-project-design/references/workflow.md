@@ -198,29 +198,25 @@ First require semantic confirmation when a proposal:
 
 Only after semantic confirmation may the candidate encode `required|preferred` with `approval: confirmed` and reciprocal supersession history. Then validate/preview that final candidate, show its exact diff, and require a separate write confirmation immediately before apply. If semantic confirmation changes after preview, discard that changeset and preview again. Ordinary read-only queries need no confirmation.
 
-## Release activation and stdio reconnection
+## Release install and verification
 
-Marketplace users should upgrade through Codex, then start a new task or restart the app:
+End users install the DeepSeek Harness bundle into a profile and restart the host:
 
 ```text
-codex plugin marketplace upgrade project-design-keeper
+dsh plugin --profile <name> add github:EverfIRE/ProjectDesignKeeper
 ```
 
-The installable runtime does not ship repository development scripts. The manual flow below is for plugin developers working from this repository's `source/` checkout. Use a newly created, empty disposable smoke-project directory, verify the exact package first, then activate it with three absolute roots:
+Upgrades re-add the bundle and restart the host; changing plugin code never hot-swaps already-mounted tools. The installable runtime does not ship repository development scripts. The manual flow below is for plugin developers working from this repository's `source/` checkout. Build and verify the exact package first:
 
 ```powershell
 cd C:\absolute\ProjectDesignKeeper\source
+npm run build
 npm run package:verify
-powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/activate-installed-plugin.ps1 -PackageRoot C:\absolute\ProjectDesignKeeper\source\.package\project-design-keeper -InstallRoot C:\absolute\plugin-cache\project-design-keeper\1.0.1 -SmokeProject C:\absolute\temporary-smoke-project
 ```
 
-Packaging captures at most 256 allowlisted entries to depth 16, with a 16 MiB per-file and 64 MiB aggregate budget. It binds reads to file identity plus high-resolution change timestamps, copies only the captured bytes, and re-captures the source before and after publication so a concurrent source change cannot produce a successful mixed-version package. Verification and installed smoke require the exact 25-file topology, cap JSON at 256 KiB, and use the same 16 MiB/64 MiB file budgets.
+Packaging captures a bounded allowlisted topology (the compiled plugin, the patch layer, and the skills tree) with a per-file and aggregate byte budget. It binds reads to file identity plus high-resolution change timestamps, copies only the captured bytes, and re-captures the source before and after publication so a concurrent source change cannot produce a successful mixed-version package. Verification re-checks the packaged topology, manifest, and digests without following reparse points or hard links.
 
-The activation script validates that exact allowlist and SHA-256 manifest without following reparse points or hard links. Authenticated Windows reads deny concurrent write/delete sharing, and the activation-wide deadline bounds directory, backup, process, barrier, and smoke work; live WMI queries also use an operation timeout. Once the first rename has moved the active install, every failure switches to an independent 30-second recovery deadline so a forward deadline reached at the failure boundary cannot suppress an authenticated restore; identity ambiguity still prohibits rollback mutation. It refuses a direct live Codex `node.exe` child whose exact command targets the active `dist/index.js` and reports every matching PID. Close that Codex task or restart the app; the script never terminates an operational Codex process. Its own installed-smoke root is created suspended, assigned to a private kill-on-close Windows Job Object, and resumed only afterward. Timeout or a 1 MiB aggregate output cap terminates that complete owned process tree, and rollback waits up to five seconds for the root handle, zero Job active processes, and both pipe EOFs. Staging holds non-delete-shared handles for the random root and every created subdirectory while it writes exclusively. It swaps by rename, runs installed smoke, restores the old active directory on failure, preserves failed-package evidence after a smoke failure, and on success retains only the new timestamped backup among backups that authenticate as the current exact package. A stable historical `backup-*` directory whose content fails the bounded current-package shape check is never admitted to cleanup: after its root and parent identities are revalidated, the script preserves it unchanged, reports its path and shape failure, and continues activation because that evidence is outside the swap inputs. A timeout, I/O failure, or uncertain backup identity remains a blocking error. Superseded authenticated backup and failed-staging cleanup first rename into a random sibling quarantine, acquire authenticated delete handles for the complete fixed inventory, perform one final exact-tree check, and delete only through those handles. That final inventory is the cleanup commit point: a later OS deletion failure reports nonzero and preserves the quarantine plus all remaining evidence, but already-disposed authenticated objects may be gone. Any identity, content, deadline, inventory, handle, or pre-commit deletion ambiguity for a tree selected for mutation fails closed without starting deletion.
-
-An existing stdio client stays connected to the process it started; replacing package files does not hot-reload or reconnect it. After successful activation, open a new Codex task or restart the app before claiming the new runtime is active. `npm run smoke:installed -- ABSOLUTE_INSTALLED_ROOT ABSOLUTE_PROJECT_ROOT` is the direct verification interface. `KEEPER_INSTALLED_ROOT` and `KEEPER_SMOKE_PROJECT` remain only as a deprecated compatibility fallback when no positional arguments are supplied.
-
-Installed smoke rejects a nonempty smoke-project root before mutation. Inside an empty disposable root it creates an isolated complete canonical Schema 3 fixture, validates it, scans its documents, rejects a modified signed cursor, previews one owned temporary output, and requires `apply_update` to fail without elicitation support. Cleanup starts only after bounded confirmation that the MCP stdio child has fully closed. The fixture and isolated cache roots are first moved into random same-parent quarantine containers, then the moved root identities and bounded file inventories are rechecked before fixed-manifest, non-recursive directory cleanup. The caller's root is empty again on success; any close, identity, hash, inventory, or cleanup ambiguity exits nonzero and reports the preserved evidence paths. Standard Node cleanup still has a final pathname check/use window inside its random quarantine; the Windows activation cleanup does not share that residual because it uses authenticated delete handles. This does not weaken the normal write workflow. A host with form elicitation must still obtain the separate exact-preview confirmation; changesets still expire after 30 minutes and must be regenerated and reconfirmed after expiry or drift.
+The packaged bundle is installed with the `dsh` CLI (npm, Git, or tarball); there is no separate activation script. After an upgrade, start a new session or restart the host before claiming the new runtime is active. `npm run smoke` runs an in-process harness smoke that mounts the plugin on a scratch Cordis context, confirms the nine tools register and the skill catalog is discoverable, scans a disposable fixture, and previews an owned temporary output. Normal writes still require the harness approval plus digest confirmation for the exact confirmed preview, and an expired changeset must be rebuilt and reconfirmed.
 
 ## Failure handling
 
@@ -229,4 +225,4 @@ Installed smoke rejects a nonempty smoke-project root before mutation. Inside an
 - Validation error: keep the pack unapplied and list actionable diagnostics.
 - Stale/expired changeset: rescan/revalidate and issue a new preview.
 - Missing or invalid evidence: lower confidence or create an open question; never fabricate a source.
-- MCP unavailable: allow mapped Markdown fallback only for downstream read context; block all maintenance writes.
+- Keeper tools unavailable: allow mapped Markdown fallback only for downstream read context; block all maintenance writes.

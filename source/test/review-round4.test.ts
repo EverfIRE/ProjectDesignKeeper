@@ -1,4 +1,4 @@
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, link, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -22,7 +22,18 @@ const quickValidatorPath = join(
   "scripts",
   "quick_validate.py"
 );
-const quickValidatorAvailable = existsSync(quickValidatorPath);
+// The validator is an optional external Codex tool: the test runs only when
+// the script exists AND the active Python can load its yaml dependency.
+const quickValidatorAvailable = existsSync(quickValidatorPath) && quickValidatorPythonReady();
+
+function quickValidatorPythonReady(): boolean {
+  try {
+    execFileSync("python", ["-c", "import yaml"], { stdio: "ignore", timeout: 10_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 type KeeperModule = typeof import("../src/index.js");
 type Keeper = KeeperModule["projectDesignKeeper"];
 

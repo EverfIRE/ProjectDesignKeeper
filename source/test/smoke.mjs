@@ -1,75 +1,118 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { join } from "node:path";
 import { promisify } from "node:util";
+import { Context } from "@deepseek-ai/cordis";
+import AgentRegistry from "@deepseek-ai/dsh-agent";
+import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
+import ToolRuntime from "@deepseek-ai/dsh-tools";
+import UserQuestionService from "@deepseek-ai/dsh-user-questions";
+import ApprovalService from "@deepseek-ai/dsh-user-approval";
+import * as keeperPlugin from "../dist/plugin.js";
 
 const execFile = promisify(execFileCallback);
 
 const sourceRoot = process.cwd();
-const temporaryRoot = await mkdtemp(join(tmpdir(), "project design keeper \u91cd\u5b9a\u4f4d-"));
-const relocatedRoot = join(temporaryRoot, "\u63d2\u4ef6 root with spaces");
-const projectRoot = join(temporaryRoot, "\u9879\u76ee fixture");
+const temporaryRoot = await mkdtemp(join(tmpdir(), "keeper-dsh-smoke-"));
+
+async function createProjectFixture(root) {
+  await mkdir(join(root, "docs"), { recursive: true });
+  await mkdir(join(root, "assets"), { recursive: true });
+  await writeFile(join(root, "docs", "evidence.txt"), "Keeper smoke evidence: moon-garden\n", "utf8");
+  await writeFile(join(root, "assets", "sample.bin"), Buffer.from([0, 1, 2, 3, 255]));
+  await execFile("git", ["init", "--initial-branch=main"], { cwd: root });
+  await execFile("git", ["config", "user.email", "keeper@example.test"], { cwd: root });
+  await execFile("git", ["config", "user.name", "Project Design Keeper smoke"], { cwd: root });
+  await execFile("git", ["add", "docs/evidence.txt", "assets/sample.bin"], { cwd: root });
+  await execFile("git", ["commit", "-m", "smoke baseline"], { cwd: root });
+}
 
 try {
-  await mkdir(relocatedRoot, { recursive: true });
-  const tracked = await execFile("git", [
-    "-C", sourceRoot, "ls-files", "-z", "--", ".codex-plugin", ".mcp.json", "dist", "skills"
-  ], { encoding: "buffer" });
-  const payload = Buffer.from(tracked.stdout).toString("utf8").split("\0").filter(Boolean);
-  assert.ok(payload.includes("dist/index.js"), "publishable bundle must be tracked by Git");
-  for (const file of payload) {
-    const destination = join(relocatedRoot, ...file.split("/"));
-    await mkdir(dirname(destination), { recursive: true });
-    await cp(join(sourceRoot, ...file.split("/")), destination);
-  }
-  await assert.rejects(readFile(join(relocatedRoot, "node_modules", "package.json"), "utf8"));
+  // The compiled bundle and skills tree are the installable payload.
+  await Promise.all([
+    import("../dist/plugin.js").then((module) => {
+      assert.equal(typeof module.apply, "function", "compiled plugin must export apply");
+    }),
+    readFile(join(sourceRoot, "skills/distill-project-design/SKILL.md"), "utf8").then((skill) => {
+      assert.match(skill, /^---\nname: distill-project-design\n/u);
+      assert.match(skill, /^description: /mu);
+    })
+  ]);
 
-  await mkdir(projectRoot, { recursive: true });
-  await writeFile(join(projectRoot, "evidence.txt"), "relocated keeper evidence\n", "utf8");
+  // Mount the compiled plugin on a scratch Cordis context.
+  const ctx = new Context();
+  await ctx.plugin(AgentRegistry);
+  await ctx.plugin(SystemPrompt);
+  await ctx.plugin(ToolRuntime);
+  await ctx.plugin(UserQuestionService);
+  await ctx.plugin(ApprovalService);
+  await ctx.plugin(keeperPlugin);
 
-  const configuration = JSON.parse(await readFile(join(relocatedRoot, ".mcp.json"), "utf8"));
-  const parameters = configuration.mcpServers["project-design-keeper"];
-  assert.equal(parameters.cwd, ".");
-  assert.equal(isAbsolute(parameters.args[0]), false);
-  assert.equal(JSON.stringify(parameters).includes(sourceRoot), false);
+  const names = ctx.tools.schemas().map((tool) => tool.name).sort();
+  assert.deepEqual(names, [
+    "analyze_redundancy",
+    "apply_update",
+    "detect_drift",
+    "preview_update",
+    "query_context",
+    "query_history",
+    "scan_scope",
+    "search_evidence",
+    "validate_pack"
+  ]);
 
-  const transport = new StdioClientTransport({
-    command: parameters.command,
-    args: parameters.args,
-    cwd: resolve(relocatedRoot, parameters.cwd),
-    stderr: "pipe"
+  const projectRoot = join(temporaryRoot, "smoke-project");
+  await createProjectFixture(projectRoot);
+
+  const scan = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: "smoke-scan" ,
+    name: "scan_scope",
+    arguments: { root: projectRoot, view: "summary" }
   });
-  const client = new Client({ name: "project-design-keeper-smoke", version: "0.1.0" });
-  let stderr = "";
-  transport.stderr?.on("data", (chunk) => {
-    stderr += chunk.toString();
-  });
+  assert.equal(scan.isError, false);
+  assert.ok(scan.value);
 
-  try {
-    await client.connect(transport);
-    const names = (await client.listTools()).tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, [
-      "analyze_redundancy",
-      "apply_update",
-      "detect_drift",
-      "preview_update",
-      "query_context",
-      "query_history",
-      "scan_scope",
-      "search_evidence",
-      "validate_pack"
-    ]);
-    const scan = await client.callTool({ name: "scan_scope", arguments: { root: projectRoot } });
-    assert.equal(scan.isError, undefined, stderr);
-    assert.ok(scan.structuredContent);
-    assert.deepEqual(scan.content[0].type, "text");
-  } finally {
-    await client.close();
-  }
+  const preview = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: "smoke-preview",
+    name: "preview_update",
+    arguments: {
+      root: projectRoot,
+      changes: [{
+        path: ".agents/skills/project-design-context/smoke.md",
+        managedBlock: { recordId: "smoke.record", content: "# Smoke\n\nSMOKE-BODY\n" }
+      }]
+    }
+  });
+  assert.equal(preview.isError, false);
+  const previewValue = preview.value;
+  assert.ok(previewValue.changesetId);
+  assert.equal(await readFile(join(projectRoot, ".agents", "skills", "project-design-context", "smoke.md"), "utf8")
+    .then(() => true, () => false), false, "preview must not write the project");
+
+  const applied = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: "smoke-apply",
+    name: "apply_update",
+    arguments: { root: projectRoot, changesetId: previewValue.changesetId },
+    agent: {
+      id: "smoke-agent",
+      session: {
+        id: "smoke-agent",
+        events: [{ type: "turn/start" }, { type: "user/message" }],
+        append: (_type, data) => ({ type: "event", data })
+      }
+    }
+  });
+  // Apply requires the harness approval seam; without an answerer it fails closed.
+  assert.equal(applied.isError, true);
+  const appliedText = applied.content.map((block) => block.type === "text" ? block.text : "").join("\n");
+  assert.match(appliedText, /unavailable|declined|answerer|approval/i);
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });
 }
+
+process.stdout.write("DSH smoke passed: compiled plugin mounts, registers nine tools, scans and previews a fixture, and apply fails closed without approval.\n");

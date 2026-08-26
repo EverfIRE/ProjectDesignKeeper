@@ -1,6 +1,6 @@
-# MCP Tool Contract
+# Keeper Tool Contract
 
-Use exactly these nine tools. Pass a repository root/path and repository-relative evidence paths; never invent absolute paths for pack records.
+Use exactly these nine native tools. Pass a repository root/path and repository-relative evidence paths; never invent absolute paths for pack records.
 
 | Tool | Role | Essential result |
 | --- | --- | --- |
@@ -26,11 +26,11 @@ Call `scan_scope` with `view: "summary"` first. Use bounded pages and never reus
 
 A changeset expires exactly 30 minutes after creation. Present its diff and conflicts, then obtain explicit confirmation. Invoke `apply_update` by `changesetId` only after confirmation. Apply rejects expired, missing, tampered, or stale changesets and target/source/manifest drift. Create a new preview after any rejection; do not retry an old changeset as though it were current.
 
-Apply writes atomically and retains bounded recovery snapshots, but recovery does not replace confirmation or concurrency checks.
+Apply writes atomically and retains bounded recovery snapshots, but recovery does not replace confirmation or concurrency checks. In the Harness, `apply_update` routes confirmation through the session approval seam and, by default, requires the human to type the final eight hexadecimal digest characters of the changeset diff; a declined, cancelled, unavailable, or mismatched confirmation fails the apply closed.
 
 ## Degraded mode
 
-If the MCP server is unavailable:
+If the keeper tools are unavailable:
 
 - ordinary downstream context may read `docs/project-design/index.md` first and follow its mapped Markdown links;
 - initialization, refresh, validation-for-write, preview, apply, and maintenance stop explicitly;
