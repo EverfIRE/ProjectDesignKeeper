@@ -25,6 +25,24 @@ To upgrade, re-add the bundle and restart the host. Add the [`dsh-plugin`](https
 
 The release bundle intentionally contains only the compiled plugin, the patch layer, and the skill resources; development sources and tests remain under `source/`.
 
+## Versioning and DeepSeek Harness compatibility
+
+The plugin version follows [semantic versioning](https://semver.org/) and evolves independently of the Harness. Each plugin release is built and verified against one pinned DeepSeek Harness release; the current target is `dsh-v0.1.0-rc.7` (also the tag CI bootstraps for the verification matrix). The compiled plugin keeps the harness packages as external imports and the bundle declares its runtime requirements as `peerDependencies`:
+
+| Package | Minimum version |
+| --- | --- |
+| `@deepseek-ai/cordis` | `>=4.0.1` |
+| `@deepseek-ai/dsh-tools` | `>=0.1.0-rc.7` |
+| `@deepseek-ai/dsh-user-approval` | `>=0.1.0-rc.7` |
+| `@deepseek-ai/dsh-user-questions` | `>=0.1.0-rc.7` |
+| `@deepseek-ai/schemastery` | `>=3.18.1` |
+
+When you upgrade the Harness:
+
+- `dsh plugin` warns if an installed profile no longer satisfies the bundle's peer ranges — upgrade the bundle to a release that matches your Harness version.
+- Re-run `npm run smoke` and `npm run package:verify` from `source/` against the new checkout before claiming compatibility.
+- To re-target this repository at a newer Harness, update the `file:` development links in `source/package.json` and the bootstrap tag in `.github/workflows/ci.yml`, then verify the full suite and the distribution contract.
+
 ## Build and verify from source
 
 Node.js 20 or newer is required. The development dependencies link the DeepSeek Harness checkout at `../../DSHarness/deepseek-harness` from `source/` (the same layout CI bootstraps).
