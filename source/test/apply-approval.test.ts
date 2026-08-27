@@ -278,6 +278,24 @@ describe("host-mediated apply approval", () => {
     await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  test("rejects authorization issuance for an already-expired changeset", async () => {
+    let currentTime = 1_000_000;
+    const api = createProjectDesignKeeper({
+      cacheDirectory: cacheDirectory(),
+      now: () => currentTime
+    });
+    const pending = await preview(api);
+    const binding = await api.inspectChangesetForApproval({
+      root: project().repository,
+      changesetId: pending.changesetId
+    });
+
+    currentTime += 30 * 60 * 1000;
+
+    expect(() => api.issueApplyAuthorization(binding, testRequestIdentity)).toThrow(/expired/i);
+    await expect(readFile(targetFile(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   test("direct embedded apply fails closed without an out-of-band trusted provider", async () => {
     const api = createProjectDesignKeeper({ cacheDirectory: cacheDirectory() });
     const pending = await preview(api);
