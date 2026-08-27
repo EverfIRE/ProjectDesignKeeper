@@ -28,13 +28,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $workspaceParent = (Resolve-Path "${{ github.workspace }}\..\..").Path
-          $bootstrap = Join-Path $workspaceParent 'DSHarness\deepseek-harness'
+          # npm resolves the `file:../../DSHarness/...` devDependencies relative
+          # to source/, i.e. one level above the checkout (the org directory).
+          # `/..` and `/` separators work on both Linux and Windows pwsh.
+          $workspaceParent = (Resolve-Path "${{ github.workspace }}/..").Path
+          $bootstrap = Join-Path $workspaceParent 'DSHarness/deepseek-harness'
           git clone --depth 1 --branch dsh-v0.1.0-rc.7 https://github.com/deepseek-ai/deepseek-harness.git $bootstrap
           Push-Location $bootstrap
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm run build
+          # Library build only: the file: devDependencies link to packages/*/lib.
+          pnpm run build:lib
           Pop-Location
       - name: Use the runner temporary directory for tests
         shell: pwsh
@@ -71,13 +75,17 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $workspaceParent = (Resolve-Path "${{ github.workspace }}\..\..").Path
-          $bootstrap = Join-Path $workspaceParent 'DSHarness\deepseek-harness'
+          # npm resolves the `file:../../DSHarness/...` devDependencies relative
+          # to source/, i.e. one level above the checkout (the org directory).
+          # `/..` and `/` separators work on both Linux and Windows pwsh.
+          $workspaceParent = (Resolve-Path "${{ github.workspace }}/..").Path
+          $bootstrap = Join-Path $workspaceParent 'DSHarness/deepseek-harness'
           git clone --depth 1 --branch dsh-v0.1.0-rc.7 https://github.com/deepseek-ai/deepseek-harness.git $bootstrap
           Push-Location $bootstrap
           corepack enable
           pnpm install --frozen-lockfile
-          pnpm run build
+          # Library build only: the file: devDependencies link to packages/*/lib.
+          pnpm run build:lib
           Pop-Location
       - run: npm ci
       - run: npm run typecheck
