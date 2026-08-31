@@ -76,6 +76,58 @@ async function expireClaimOwner(claim: { path: string }): Promise<void> {
   })}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
+type OwnedSnapshotPublicationClaim = Awaited<ReturnType<typeof claimOwnedSnapshotDirectory>>;
+
+async function retainClaimGenerationBeforeUnlink(
+  claim: OwnedSnapshotPublicationClaim,
+  retainedPaths: string[]
+): Promise<string> {
+  const retainedPath = join(dirname(claim.path), `.claim-retained-${randomUUID()}.tmp`);
+  retainedPaths.push(retainedPath);
+  await link(claim.path, retainedPath);
+  const [visible, retained] = await Promise.all([
+    lstat(claim.path, { bigint: true }),
+    lstat(retainedPath, { bigint: true })
+  ]);
+  expect(visible.dev).toBe(claim.dev);
+  expect(visible.ino).toBe(claim.ino);
+  expect(retained.dev).toBe(claim.dev);
+  expect(retained.ino).toBe(claim.ino);
+  expect(visible.nlink).toBe(2n);
+  expect(retained.nlink).toBe(2n);
+
+  await rm(claim.path);
+  await expect(lstat(claim.path)).rejects.toMatchObject({ code: "ENOENT" });
+  const preserved = await lstat(retainedPath, { bigint: true });
+  expect(preserved.dev).toBe(claim.dev);
+  expect(preserved.ino).toBe(claim.ino);
+  expect(preserved.nlink).toBe(1n);
+  return retainedPath;
+}
+
+async function removeRetainedClaimGenerations(retainedPaths: string[]): Promise<void> {
+  for (const retainedPath of retainedPaths.splice(0)) {
+    await rm(retainedPath, { force: true });
+  }
+}
+
+async function expectClaimPathGeneration(
+  claimPath: string,
+  current: OwnedSnapshotPublicationClaim,
+  retainedPath: string,
+  previous: OwnedSnapshotPublicationClaim
+): Promise<void> {
+  const [visible, retained] = await Promise.all([
+    lstat(claimPath, { bigint: true }),
+    lstat(retainedPath, { bigint: true })
+  ]);
+  expect(visible.dev).toBe(current.dev);
+  expect(visible.ino).toBe(current.ino);
+  expect(retained.dev).toBe(previous.dev);
+  expect(retained.ino).toBe(previous.ino);
+  expect(visible.dev === retained.dev && visible.ino === retained.ino).toBe(false);
+}
+
 function exactRemovalIntentRecord(
   layout: Awaited<ReturnType<typeof prepareSecureCache>>,
   identity: Awaited<ReturnType<typeof captureSecurePathIdentity>>,
@@ -3023,26 +3075,77 @@ test("observes a valid replacement claim created after initial generation captur
   const layout = await prepareSecureCache({ cacheDirectory: join(root, "cache") }, join(root, "project"));
   const target = join(layout.indexes, "5".repeat(64));
   const original = await claimOwnedSnapshotDirectory(layout, target);
+  const retainedPaths: string[] = [];
   let replacement: Awaited<ReturnType<typeof claimOwnedSnapshotDirectory>> | undefined;
   let replaced = false;
 
-  const observed = await observeOwnedSnapshotPublicationClaim(layout, target, {
-    afterClaimMetadataCapture: async (path, metadata) => {
-      if (replaced) return;
-      replaced = true;
-      expect(path).toBe(original.path);
-      expect(metadata.dev).toBe(original.dev);
-      expect(metadata.ino).toBe(original.ino);
-      await safeRemoveOwnedPublicationClaim(layout, original);
-      replacement = await claimOwnedSnapshotDirectory(layout, target);
-    }
-  });
+  try {
+    const observed = await observeOwnedSnapshotPublicationClaim(layout, target, {
+      afterClaimMetadataCapture: async (path, metadata) => {
+        if (replaced) return;
+        replaced = true;
+        expect(path).toBe(original.path);
+        expect(metadata.dev).toBe(original.dev);
+        expect(metadata.ino).toBe(original.ino);
+        const retainedPath = await retainClaimGenerationBeforeUnlink(original, retainedPaths);
+        replacement = await claimOwnedSnapshotDirectory(layout, target);
+        await expectClaimPathGeneration(path, replacement, retainedPath, original);
+      }
+    });
 
-  expect(replaced).toBe(true);
-  expect(replacement).toBeDefined();
-  expect(observed.state).toBe("owned");
-  if (observed.state === "owned") expect(samePublicationClaimEpoch(observed.claim, replacement!)).toBe(true);
-  await safeRemoveOwnedPublicationClaim(layout, replacement!);
+    expect(replaced).toBe(true);
+    expect(replacement).toBeDefined();
+    expect(observed.state).toBe("owned");
+    if (observed.state === "owned") expect(samePublicationClaimEpoch(observed.claim, replacement!)).toBe(true);
+    await safeRemoveOwnedPublicationClaim(layout, replacement!);
+  } finally {
+    await removeRetainedClaimGenerations(retainedPaths);
+  }
+});
+
+test("fails closed when an unlinked claim path is relinked with the same dev and ino", async () => {
+  const root = await fixtureRoot();
+  const layout = await prepareSecureCache({ cacheDirectory: join(root, "cache") }, join(root, "project"));
+  const target = join(layout.indexes, "9".repeat(64));
+  const owned = await claimOwnedSnapshotDirectory(layout, target);
+  const originalBytes = await readFile(owned.path, "utf8");
+  const retainedPaths: string[] = [];
+  let relinked = false;
+  let captures = 0;
+
+  try {
+    const failure = await observeOwnedSnapshotPublicationClaim(layout, target, {
+      afterClaimMetadataCapture: async (path, metadata) => {
+        captures += 1;
+        if (relinked) return;
+        const retainedPath = await retainClaimGenerationBeforeUnlink(owned, retainedPaths);
+        await link(retainedPath, path);
+        await rm(retainedPath);
+        const reused = await lstat(path, { bigint: true });
+        expect(reused.dev).toBe(metadata.dev);
+        expect(reused.ino).toBe(metadata.ino);
+        expect(reused.nlink).toBe(1n);
+        await writeFile(path, "{malformed", { encoding: "utf8", mode: 0o600 });
+        relinked = true;
+      }
+    }).catch((error: unknown) => error);
+
+    expect(relinked).toBe(true);
+    expect(captures).toBe(1);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String((failure as Error).message)).toMatch(/malformed|ambiguous/iu);
+    expect((failure as Error).cause).toBeInstanceOf(Error);
+    const current = await lstat(owned.path, { bigint: true });
+    expect(current.dev).toBe(owned.dev);
+    expect(current.ino).toBe(owned.ino);
+
+    await removeRetainedClaimGenerations(retainedPaths);
+    await writeFile(owned.path, originalBytes, { encoding: "utf8", mode: 0o600 });
+    const restored = await captureOwnedSnapshotPublicationClaim(layout, target);
+    await safeRemoveOwnedPublicationClaim(layout, restored);
+  } finally {
+    await removeRetainedClaimGenerations(retainedPaths);
+  }
 });
 
 test("bounds valid replacement-claim churn and preserves the last generation", async () => {
@@ -3050,23 +3153,30 @@ test("bounds valid replacement-claim churn and preserves the last generation", a
   const layout = await prepareSecureCache({ cacheDirectory: join(root, "cache") }, join(root, "project"));
   const target = join(layout.indexes, "6".repeat(64));
   let current = await claimOwnedSnapshotDirectory(layout, target);
+  const retainedPaths: string[] = [];
   let captures = 0;
 
-  const failure = await observeOwnedSnapshotPublicationClaim(layout, target, {
-    afterClaimMetadataCapture: async () => {
-      captures += 1;
-      await safeRemoveOwnedPublicationClaim(layout, current);
-      current = await claimOwnedSnapshotDirectory(layout, target);
-    }
-  }).catch((error: unknown) => error);
+  try {
+    const failure = await observeOwnedSnapshotPublicationClaim(layout, target, {
+      afterClaimMetadataCapture: async (path) => {
+        captures += 1;
+        const previous = current;
+        const retainedPath = await retainClaimGenerationBeforeUnlink(previous, retainedPaths);
+        current = await claimOwnedSnapshotDirectory(layout, target);
+        await expectClaimPathGeneration(path, current, retainedPath, previous);
+      }
+    }).catch((error: unknown) => error);
 
-  expect(failure).toBeInstanceOf(Error);
-  expect(String((failure as Error).message)).toMatch(/publication claim|replacement|stabili[sz]/iu);
-  expect(captures).toBe(4);
-  await expect(captureOwnedSnapshotPublicationClaim(layout, target)).resolves.toSatisfy((claim) =>
-    samePublicationClaimEpoch(claim, current)
-  );
-  await safeRemoveOwnedPublicationClaim(layout, current);
+    expect(failure).toBeInstanceOf(Error);
+    expect(String((failure as Error).message)).toMatch(/publication claim|replacement|stabili[sz]/iu);
+    expect(captures).toBe(4);
+    await expect(captureOwnedSnapshotPublicationClaim(layout, target)).resolves.toSatisfy((claim) =>
+      samePublicationClaimEpoch(claim, current)
+    );
+    await safeRemoveOwnedPublicationClaim(layout, current);
+  } finally {
+    await removeRetainedClaimGenerations(retainedPaths);
+  }
 });
 
 test("file publication acquisition continues through a valid replacement claim", async () => {
@@ -3076,20 +3186,29 @@ test("file publication acquisition continues through a valid replacement claim",
   let original = await claimOwnedSnapshotDirectory(layout, target);
   await expireClaimOwner(original);
   original = await captureOwnedSnapshotPublicationClaim(layout, target);
+  const retainedPaths: string[] = [];
   let replacement: Awaited<ReturnType<typeof claimOwnedSnapshotDirectory>> | undefined;
 
-  await publishExclusiveFile(layout, target, "published", {
-    afterClaimMetadataCapture: async () => {
-      if (replacement) return;
-      await safeRemoveOwnedPublicationClaim(layout, original);
-      replacement = await claimOwnedSnapshotDirectory(layout, target);
-      await expireClaimOwner(replacement);
-    }
-  });
+  try {
+    await publishExclusiveFile(layout, target, "published", {
+      afterClaimMetadataCapture: async (path, metadata) => {
+        if (replacement) return;
+        expect(path).toBe(original.path);
+        expect(metadata.dev).toBe(original.dev);
+        expect(metadata.ino).toBe(original.ino);
+        const retainedPath = await retainClaimGenerationBeforeUnlink(original, retainedPaths);
+        replacement = await claimOwnedSnapshotDirectory(layout, target);
+        await expectClaimPathGeneration(path, replacement, retainedPath, original);
+        await expireClaimOwner(replacement);
+      }
+    });
 
-  expect(replacement).toBeDefined();
-  await expect(lstat(replacement!.path)).rejects.toMatchObject({ code: "ENOENT" });
-  await expect(readFile(target, "utf8")).resolves.toBe("published");
+    expect(replacement).toBeDefined();
+    await expect(lstat(replacement!.path)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(target, "utf8")).resolves.toBe("published");
+  } finally {
+    await removeRetainedClaimGenerations(retainedPaths);
+  }
 });
 
 test("rejects same-generation malformed claim bytes without spending replacement retries", async () => {
