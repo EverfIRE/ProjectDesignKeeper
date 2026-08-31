@@ -1,0 +1,57 @@
+The current plan is suitable as a small API experiment, but it is not safe as an engine integration or a multiplayer shipping plan. It leaves ownership, threading, collision filtering, fixed-step timing, object identity, rollback state, and subsystem validation undefined. “HelloWorld passes” proves only that one build can initialize and step a trivial world.
+
+## Problems in the current plan
+
+1. **Initialization is incomplete and has no shutdown contract.** Registering the allocator and assigning `Factory::sInstance` is only part of process initialization. Pin one Jolt revision and verify the exact initialization sequence for that revision, including trace/assert hooks and type registration. Define the reverse teardown order as well: stop physics work, join the engine-owned workers, destroy worlds and all objects that depend on registered types, unregister types, then delete and clear the factory. Reinitializing or unloading while Jolt objects remain alive should be forbidden.
+
+2. **The engine must own the job system.** Jolt should not be expected to invent an appropriate worker topology. Create a long-lived job system explicitly, choose its worker count from the engine’s thread budget, and keep it alive for every update that can reference it. Decide whether Jolt gets a dedicated pool or an adapter to the engine scheduler. In either case, document shutdown, worker affinity, maximum jobs/barriers, oversubscription with rendering and networking, and what happens when a physics job fails. Create a bounded temporary allocator from measured scene demand rather than an arbitrary sample value.
+
+3. **One object layer with every pair colliding is not an acceptable filter design.** It will waste broad-phase and narrow-phase work and makes triggers, static scenery, characters, vehicles, projectiles, and query-only objects difficult to reason about. Start with a small explicit collision matrix derived from gameplay rules. Map object layers to a smaller set of broad-phase layers, and implement both object-vs-broad-phase and object-pair filters. Test the matrix in both directions. Keep query masks and sensor behavior explicit instead of relying on accidental pair-filter behavior.
+
+4. **`BodyID` is a transient physics handle, not a permanent network identity.** A body can be removed and destroyed, and an ID slot may later be reused with a different sequence value. Keeping IDs forever or sending raw IDs across machines couples game state to one process’s allocation history. Give each replicated object a stable engine/network ID plus a generation. Maintain a validated mapping from that identity to the current `BodyID`, invalidate it during remove/destroy, and reject stale generations. Route body access through a narrow physics-world API so gameplay cannot retain unchecked handles or access bodies concurrently without the required locking discipline.
+
+5. **Creating bodies during play needs an explicit lifecycle.** Separate create, add/activate, deactivate, remove, and destroy operations. Queue lifecycle commands at defined tick boundaries; do not mutate the world unpredictably from render, network, or worker callbacks. Record spawn/despawn events in rollback history. Establish ownership for shapes, constraints, user data, listeners, and engine components, and test shutdown and rapid create/destroy churn.
+
+6. **A variable render-loop update breaks the stated 120 Hz simulation contract.** Accumulate real time outside physics and consume fixed `1 / 120` second ticks. Pass that fixed value to the pinned revision’s `PhysicsSystem::Update` signature, with collision/integration step choices justified by tests. Never stretch the physics delta to catch up. Cap work per rendered frame, expose an overload metric, and choose an explicit overload policy such as slowing presentation, dropping a client from prediction, or resynchronizing. Publish completed physics snapshots and interpolate presentation between them; the renderer must not own simulation transforms.
+
+7. **Transforms plus a random seed do not constitute rollback state.** Rollback must account for at least creation/destruction, pose, linear and angular velocity, activation/sleep state, relevant motion properties, constraints, character state, vehicle inputs/state, and any gameplay state that affects forces or contacts. Internal caches and floating-point execution can diverge even when seeds match. Do not claim deterministic replay across Windows and Linux without evidence from the exact compiler, flags, CPU policy, Jolt revision, and content. Prefer an authoritative server with reconciliation. If client rollback is required, use stable game IDs, deterministic command ordering, tick-stamped inputs, periodic authoritative snapshots, state hashes for diagnosis, and a recovery path when replay diverges.
+
+8. **The three high-level features are separate integrations, not proof that the base world works.** `CharacterVirtual` is not simply a normal rigid body: define its per-tick update order, collision/query filters, supporting-body behavior, contact callbacks, slope and step policy, and the state replicated for correction. `VehicleConstraint` needs a chassis lifecycle, wheel collision strategy, constraint registration/removal, input ordering, and validation under suspension/contact edge cases. Cloth through `SoftBodyCreationSettings` needs asset conversion, material/constraint policy, collision layers, memory and CPU budgets, sleeping/visibility policy, and a networking decision; replicating every soft-body particle is unlikely to fit a prototype budget.
+
+## Corrected integration plan
+
+### 1. Freeze the integration boundary
+
+Pin the Jolt commit or release, build options, compiler, floating-point settings, target architectures, and debug/profile/release configurations. Wrap Jolt behind engine-owned world, body, query, character, vehicle, and soft-body interfaces. Keep Jolt headers and handles out of network packets and long-lived gameplay save data. Record the exact configuration in captures and crash reports.
+
+### 2. Build a process/world lifecycle harness
+
+Implement process initialization and teardown with explicit allocator, diagnostics, factory/type registration, temporary allocator, and job-system ownership. Add a minimal world configuration with declared capacities and filters. Exercise initialize-create-step-destroy-shutdown repeatedly in one process, including an empty world and a world destroyed while many objects have recently been removed. Run this under the platform memory/thread diagnostic tools available to the project.
+
+### 3. Define collision and query policy
+
+Write the gameplay collision matrix first. Assign object and broad-phase layers, then implement and unit-test every allowed and denied pair. Add tests for ray/shape queries, sensors, static-vs-static rejection, character queries, vehicle wheels, and soft-body interaction. Profile candidate layer layouts with representative counts rather than accepting the broadest layout for convenience.
+
+### 4. Define identity, commands, and ownership
+
+Use stable engine IDs with generations and a per-world mapping to transient body handles. Queue body creation, activation, mutation, removal, and destruction as tick-addressed commands. Make one subsystem responsible for applying those commands and publishing results. Validate stale handles, duplicate destroys, world teardown, and allocation-slot reuse. Store engine identity in user data only as a lookup aid, not as a substitute for validating ownership.
+
+### 5. Implement the fixed-step scheduler
+
+Run exactly 120 simulation ticks per simulated second using a fixed accumulator. Establish a deterministic order for network input ingestion, queued lifecycle changes, controller/vehicle input, force application, physics update, event extraction, snapshot publication, and render interpolation. Measure tick time, temporary allocator high-water mark, active body count, contact count, jobs, and backlog. Define a maximum catch-up budget and test long frames, pauses, and clock correction.
+
+### 6. Integrate features incrementally
+
+First validate rigid bodies, constraints, queries, contact delivery, and activation. Then add one `CharacterVirtual` path with controlled slopes, steps, moving platforms, penetration recovery, and server correction. Add vehicles only after chassis/constraint lifecycle is stable. Add soft bodies last, with a declared local-only, server-authored, or replicated role and a hard performance budget. Each feature gets its own collision/filter and create/destroy tests.
+
+### 7. Choose and prove the multiplayer model
+
+Start with server authority and tick-stamped inputs. Decide separately which objects are predicted, interpolated, or server-only. For any rollback scope, define a versioned snapshot schema in engine terms, stable entity mapping, retained tick window, spawn/despawn log, replay input log, hash diagnostics, and authoritative correction. Run replay tests first on the same binary, then across supported Windows/Linux builds. Treat every mismatch as data to diagnose; never convert “same seed” into a determinism guarantee.
+
+### 8. Replace HelloWorld with release gates
+
+Keep HelloWorld as a bootstrap smoke test, then require automated tests for initialization failure and teardown, layer/filter truth tables, body-handle reuse, command ordering, concurrent queries, contact listener lifetime, fixed-step behavior under variable rendering, character correction, vehicle and cloth lifecycle, and rollback divergence recovery. Add long-running soak tests with creation/destruction churn and representative peak loads. Run debug/profile/release builds on every supported platform, capture CPU and memory distributions rather than one average, and test network latency, jitter, loss, reordering, late input, and resynchronization.
+
+Before shipping, require measured budgets for worst-case physics tick time at 120 Hz, memory and temporary allocation, worker utilization, active bodies/constraints/contacts, snapshot bandwidth and retained rollback memory. Require no stale-handle or shutdown failures in stress runs, no unexplained state-hash divergence in the supported replay scope, and a demonstrated recovery path for overload and network desynchronization.
+
+The immediate milestone should therefore be a fixed-step, engine-owned Jolt world with explicit jobs, filters, identity/lifetime rules, and rigid-body rollback diagnostics. Character, vehicle, and cloth work should not begin in parallel until that foundation passes lifecycle, timing, and authority tests.

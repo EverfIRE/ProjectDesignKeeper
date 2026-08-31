@@ -1,0 +1,244 @@
+This plan is not production-ready. The major blockers are ownership/lifecycle, fixed stepping, body identity, rollback completeness, module-specific integration, and unproven cross-platform determinism.
+
+## Review of the current plan
+
+| Current assumption | Required correction |
+|---|---|
+| Allocator and `Factory` are sufficient initialization | Call `RegisterDefaultAllocator` before any Jolt API, install diagnostics, create `Factory`, call `RegisterTypes`, construct all long-lived dependencies, then initialize the world. Reverse this dependency order during shutdown. |
+| Jolt creates its own worker threads | The application owns and supplies the `JobSystem`, its thread budget, barriers, shutdown behavior, and callback-thread contract. |
+| One object layer with all pairs colliding | Separate gameplay collision policy from broad-phase partitioning. Implement a symmetric `ObjectLayerPairFilter`, deliberate object-to-broad-phase mapping, and an `ObjectVsBroadPhaseLayerFilter`. Test sensors and query masks separately. |
+| `BodyID` can be retained forever | `BodyID` is world-local and reusable after destruction. Keep a stable engine/network entity ID and a validated host mapping. `RemoveBody` preserves the ID; `DestroyBody` invalidates it. |
+| Raw `BodyID` plus transforms is a rollback snapshot | Transforms omit velocities, sleep state, contacts, cached simulation state, structural history, and host-owned controller state. Use `StateRecorder` plus host state and ordered structural events. Never use raw `BodyID` as network identity. |
+| Call `Update` from a variable render loop | Run a single fixed-step accumulator at exactly `1 / 120` seconds. Render with interpolation. Bound catch-up work without stretching the simulation delta. |
+| Same seed implies Windows/Linux determinism | A seed is only one input. Determinism also requires a pinned source/build, matching defines and call order, controlled floating-point behavior, deterministic host utilities, normalized queries/events, and cross-platform evidence. |
+| HelloWorld passing is sufficient | HelloWorld is only an initialization smoke test. Shipping requires upstream tests, used samples, rollback/determinism/fault tests, network tests, and target performance evidence. |
+
+## 1. Freeze the actual integration target
+
+Pin the integration to a verified release, not `master`. The current source contract should be recorded as Jolt v5.6.0, commit `e77f175595e64cb44218cc9d9d56fc365ad0e36a`, but verify that this is actually what the executable contains.
+
+Capture, per build:
+
+- Jolt tag and commit
+- compiler, standard library, platform, and architecture
+- float or double precision
+- SIMD and floating-point policies
+- every Jolt and host compile definition
+- debug/profile/release role
+- allocator and job-system implementations
+- worker count and job scheduling configuration
+- enabled modules
+- content/configuration revision
+- provenance of the binary used for a test capture
+
+Verify that every translation unit sees compatible Jolt definitions. Do not assume older signatures or substep recommendations apply: v5.6 `PhysicsSystem::Update` takes `collisionSteps`, followed by `TempAllocator*` and `JobSystem*`. Friction and several module APIs also changed at this boundary.
+
+## 2. Correct process and world lifecycle
+
+Initialization should follow dependency order:
+
+1. Call `JPH::RegisterDefaultAllocator()` before any Jolt allocation or API use.
+2. Install the host trace and assertion hooks.
+3. Create `JPH::Factory::sInstance`.
+4. Call `JPH::RegisterTypes()`.
+5. Construct the long-lived temporary allocator and application-owned `JobSystem`.
+6. Construct and retain the broad-phase interface, pair filter, object-vs-broad-phase filter, and listeners.
+7. Construct the `PhysicsSystem` and call `Init` with measured capacities.
+8. Register listeners.
+9. Create and add bodies, constraints, characters, and vehicles.
+
+If `JobSystemThreadPool` is used, configure its thread count explicitly from an engine budget. Document which callbacks can execute on worker threads, how jobs are drained, and what happens on job or allocator failure.
+
+Shutdown must stop new updates and callbacks first, drain/join workers, unregister step listeners and constraints, remove/destroy bodies, unregister remaining listeners, destroy the world and retained dependencies, then:
+
+```cpp
+JPH::UnregisterTypes();
+delete JPH::Factory::sInstance;
+JPH::Factory::sInstance = nullptr;
+```
+
+Add repeated initialize/run/shutdown tests to expose dangling callbacks and incorrect ownership.
+
+## 3. Define layers and filters deliberately
+
+Create a source-controlled object-layer collision matrix for categories such as static geometry, dynamic bodies, sensors, character proxies, vehicles, and soft bodies. The exact categories are game-specific, but the policy must be symmetric:
+
+```text
+collides(A, B) == collides(B, A)
+```
+
+Then independently define:
+
+- `ObjectLayerPairFilter`: whether two object layers may collide.
+- `BroadPhaseLayerInterface`: where each object layer is stored.
+- `ObjectVsBroadPhaseLayerFilter`: which broad-phase partitions an object/query must inspect.
+- Query and sensor masks: what gameplay queries and triggers are allowed to observe.
+
+Test every matrix entry in both argument orders. One all-colliding layer hides mistakes and prevents useful broad-phase pruning.
+
+For deterministic broad-phase result processing, sorting returned IDs is insufficient because widened broad-phase bounds can change hit membership. Use a custom `CollisionCollector::AddHit` that re-tests the original query against `Body::GetWorldSpaceBounds`, rejects false broad-phase candidates, and then orders accepted results by stable engine identity. Normalize narrow-phase results, callback events, and active-body results too.
+
+## 4. Introduce safe host body handles
+
+Use a host handle similar to:
+
+```text
+PhysicsEntityHandle {
+    stable engine/network entity ID
+    world ID
+    host generation
+    current BodyID
+    active/removed/destroyed state
+}
+```
+
+The lifecycle is:
+
+```text
+CreateBody -> AddBody -> RemoveBody -> optional AddBody -> DestroyBody
+```
+
+`RemoveBody` keeps the body, state, and `BodyID`; mark the mapping inactive but retain it. This is useful for rollback. `DestroyBody` or world teardown invalidates the mapping, and the underlying ID may later be reused.
+
+For objects that may reappear during the rollback window, prefer removing them and defer final destruction until they fall outside that window. Network messages should use stable entity ID plus generation, never serialized raw `BodyID`.
+
+All body access must validate locks. A stale ID can make lock acquisition fail. Use `BodyLockMultiRead` or `BodyLockMultiWrite` for multi-body operations. Expose no-lock access only in wrapper functions whose callback or lock precondition proves it safe.
+
+## 5. Own one fixed 120 Hz scheduler
+
+Maintain the accumulator in high precision and simulate only fixed ticks:
+
+```cpp
+constexpr float kFixedDelta = 1.0f / 120.0f;
+
+accumulator += render_frame_seconds;
+uint32_t catch_up_steps = 0;
+
+while (accumulator >= kFixedDelta &&
+       catch_up_steps < max_catch_up_steps)
+{
+    ApplyTickStampedCommandsInStableOrder(tick);
+    ApplyStructuralEventsInStableOrder(tick);
+    UpdateHostOwnedControllersForTick(tick);
+
+    JPH::EPhysicsUpdateError errors = physics_system.Update(
+        kFixedDelta,
+        collision_steps,
+        &temp_allocator,
+        &job_system);
+
+    HandleUpdateErrors(errors);
+    CommitNormalizedPhysicsEvents(tick);
+    CaptureRollbackStateAndHash(tick);
+
+    accumulator -= kFixedDelta;
+    ++tick;
+    ++catch_up_steps;
+}
+
+render_alpha = accumulator / kFixedDelta;
+```
+
+Determine `collision_steps` from high-speed/contact testing rather than copying a sample value. Do not add a variable “integration substep” model from an older API.
+
+If the backlog exceeds the catch-up budget, invoke an explicit overload policy—such as pausing presentation, requesting authoritative resynchronization, or terminating an unhealthy session. Do not enlarge the fixed delta to catch up.
+
+Inspect every `EPhysicsUpdateError` bit on every tick:
+
+- `ManifoldCacheFull`: contacts are being ignored; review/increase `inMaxContactConstraints`.
+- `BodyPairCacheFull`: body pairs are being ignored; review/increase `inMaxBodyPairs`.
+- `ContactConstraintsFull`: contact constraints are being ignored; review/increase `inMaxContactConstraints`.
+
+For multiplayer, treat a tick with ignored contacts as invalid rather than continuing silently. Resize only at a safe world boundary or stop/resynchronize according to policy. Temporary allocator exhaustion and job-system failure are separate fault channels and require separate instrumentation and tests. Sample capacities and the HelloWorld temporary allocator size are not production budgets.
+
+## 6. Define the rollback boundary
+
+A rollback frame should contain:
+
+- tick number and fixed-step configuration
+- pinned content, build, and physics-configuration version
+- Jolt `StateRecorder` stream
+- stable host identity-to-`BodyID` mapping and active state
+- ordered create/add/remove/destroy events
+- tick-stamped inputs and their total ordering
+- host RNG state
+- `CharacterVirtual` inputs, listener-derived state, support state, and other external controller state
+- vehicle inputs and gameplay state outside Jolt’s recorded state
+- soft-body authority/recovery metadata
+- normalized gameplay events needed for replay
+- canonical diagnostic state hash
+
+`StateRecorder` does not recreate bodies that were structurally changed after the snapshot. Restore the matching structure and IDs, in matching call order, before restoring Jolt state. This generally means retaining removed bodies and delaying destruction through the rollback horizon.
+
+A rollback should:
+
+1. Restore the structural mapping for tick T.
+2. Restore Jolt state with matching IDs and call order.
+3. Restore host-owned controller, input, gameplay, and RNG state.
+4. Replay ordered fixed-tick commands.
+5. Compare canonical per-tick hashes.
+6. Request authoritative correction/resynchronization at the first unresolved divergence.
+
+Treat saved binary state as a pinned-version runtime artifact, not a durable or cross-version save format. Network snapshots may contain quantized transforms for correction or presentation, but those do not replace rollback simulation state.
+
+## 7. Integrate each module through its actual seam
+
+`CharacterVirtual`:
+
+- Keep it host-owned and drive `Update`/`ExtendedUpdate` explicitly in the fixed-tick order.
+- Install the v5.6 `CharacterContactListener`.
+- Retain external inputs, support/contact-derived state, and listener outputs needed by rollback.
+- Decide explicitly whether it has an optional inner body. Without one, ordinary rigid bodies and queries do not automatically see the virtual character.
+- Document which representation participates in gameplay queries and collisions.
+
+`VehicleConstraint`:
+
+- Retain the chassis, constraint, `VehicleCollisionTester`, and listeners.
+- Register the vehicle using both `AddConstraint` and `AddStepListener`.
+- Apply controller input in a fixed, replayable tick order.
+- Treat `GetController()` as borrowed. `VehicleConstraint` owns and deletes its controller; do not delete it separately.
+- During teardown, call `RemoveStepListener` and `RemoveConstraint` before destroying the constraint, tester, listeners, or chassis.
+- Snapshot stable vehicle inputs/state, never raw constraint or controller pointers.
+
+Soft bodies:
+
+- Keep immutable/shared `SoftBodySharedSettings` alive for every instance using them.
+- Combine them with per-instance `SoftBodyCreationSettings` and create using `CreateAndAddSoftBody`.
+- Check `IsSoftBody` before type-specific access and use `SoftBodyMotionProperties`.
+- Route contacts through `SoftBodyContactListener`.
+- Do not assume ordinary constraints or rigid-body APIs apply.
+- Treat the feature as WIP: there is no simulated soft-soft response, and production CPU, memory, collision, rollback, and recovery behavior must be proven.
+- For the prototype, choose explicitly whether cloth is local-only, authoritative, or replicated. Do not quietly include it in deterministic prediction without evidence.
+
+## 8. Prove determinism instead of assuming it
+
+Enable `JPH_CROSS_PLATFORM_DETERMINISTIC`, but treat it as a prerequisite only. Match:
+
+- Jolt source and compile definitions
+- precision and SIMD policy
+- content and initial structure
+- inputs, structural events, and call order
+- job configuration
+- floating-point environment on every thread
+
+Compile host simulation code in precise mode—such as `/fp:precise` or `-ffp-model=precise`—and disable contraction where supported with `-ffp-contract=off`. Keep nearest rounding and DAZ/FTZ settings identical on all simulation workers.
+
+In deterministic host code, use Jolt’s `Sin`/`Cos`, `QuickSort`, `BinaryHeapPush`/`BinaryHeapPop`, and `Hash` instead of standard-library equivalents whose cross-platform behavior is unsuitable for the contract.
+
+Run identical tick-stamped commands across every supported Windows/Linux compiler, architecture, and build role. Capture the first divergent tick together with inputs, structural events, actual-bounds-filtered query results, normalized callbacks, active bodies, error flags, job configuration, and build metadata.
+
+## Validation and release gates
+
+Use this promotion ladder:
+
+1. Build and run pinned v5.6.0 HelloWorld for initialization/update/shutdown smoke coverage.
+2. Run upstream UnitTests under every selected compiler/defines/precision configuration.
+3. Run official samples covering layers and queries, body/constraint lifecycles, `CharacterVirtual`, vehicles, and soft bodies.
+4. Test `StateRecorder` save/restore, mismatched structure, stale IDs, remove/re-add identity preservation, and delayed destruction.
+5. Inject all three update-error bits, temporary allocator exhaustion, and job-system failures through their separate channels.
+6. Run host tests for fixed stepping under 30/60/120/144 Hz presentation, render jitter, catch-up overload, spawn/despawn, callback ordering, lock failure, and repeated shutdown.
+7. Run rollback and authority tests under packet jitter, loss, duplication, and reordering; verify hash divergence detection and resynchronization.
+8. Run the cross-platform determinism matrix and preserve first-divergence artifacts.
+9. Run Jolt `PerformanceTest` plus the host profiler on representative target content.
+
+Release evidence should report p50/p95/p99 physics-tick time and high-water budgets for bodies, pairs, contacts, constraints, temporary memory, jobs, rollback storage, and network bandwidth. Every used module and every supported platform/build role must pass its corresponding rung; HelloWorld alone is not a shipping gate.

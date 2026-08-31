@@ -1,0 +1,79 @@
+## Version gate and ownership
+
+在未补齐下列门禁前，不能给出可粘贴的 Blueprint 节点、C++ 符号、console variable、Project Setting 名称、编辑器路径或插件可用性断言；它们均为版本/构建/功能成熟度门禁项，不能猜测。
+
+| 必填门禁 | 必须记录 |
+|---|---|
+| 引擎与构建 | UE 主/次/补丁版本；Launcher 或授权 source commit；Chaos 后端与编译开关；Development/Shipping、Dedicated Server/Client/Editor/PIE/Packaged |
+| 平台与能力 | 目标服务器与客户端硬件/OS；启用插件、版本、实验状态；车辆采用哪个 Chaos/Modular 系统；Cloth、Flesh、Fracture、Dataflow、CVD 的可用性 |
+| 物理运行 | World/Physics 配置快照；tick group；目标和实际 60 Hz、帧 delta、accumulator、backlog、catch-up/丢弃时间；固定步、帧相关步、substep、async 的分别状态及状态交接 |
+| 场景复现 | map、资产修订、随机种子、输入序列与事件顺序；单位/scale、简单/复杂几何、碰撞过滤、质量/惯量、速度、CCD、sleep；body/contact/constraint/query/cloth/flesh/destruction 数量 |
+| 联机 | 服务端权威；预测、插值、纯表现 actor 划分；输入/状态 schema、frame ID、历史长度、修正阈值、rewind/resimulation/replay 范围；RTT、jitter、loss、reorder、duplicate、drop、burst |
+| 证据 | 构建/配置/map/seed/硬件/通道/预热/重复次数、capture ID、开销、p50/p95/p99、首个分歧帧、容差、预算与不变量 |
+
+所有权必须明确：游戏线程、物理线程、async 回调与缓冲状态交接的生产者/消费者/生命周期/时间戳/同步机制；组件与资产 owner；网络权威状态与 cosmetic 状态 owner。任何回调或读写面在该构建中未验证线程安全前，一律视为不安全。
+
+以下 UE4 路线被判为遗留项，不接受为 Chaos 修复方案：`PhysXScene`、`PxScene`、PVD/PhysX Visual Debugger、`UDestructibleComponent`/APEX Destruction、`PxVehicleDrive4W`/PhysX Vehicles。它们没有“猜测的替代符号”。
+
+## Chaos workflow map
+
+先冻结 manifest，再以同一输入进行基线 A 与单一变化 B 的匹配运行；禁止同时加 iterations、开 substep、切 async、关 CCD。堆叠抖动与穿透按 scale、几何与 overlap、filter、质量/惯量比例、速度、CCD 资格、接触法线/深度、constraint error、sleep、实际 cadence 的顺序排查，而非先调迭代次数。
+
+| 域与运行上下文 | owner / 核心路由 | 必要证据 | 版本/成熟度边界 |
+|---|---|---|---|
+| 刚体堆叠、查询、接触、CCD、simple/complex geometry | 物理/碰撞 owner；`rigid-body-collision-contact`，并接 `debugging-testing-physics`、`profiling-scaling-physics` | CVD 中粒子、geometry、filter、query、contact constraint、速度、sleep、首个 tunnel；配对 timing/counter | cooked geometry、query、CCD、CVD channel、UI/API 均须本构建验证 |
+| 固定步、substep、async、tick 生命周期 | 物理调度 owner；`architecting-real-time-physics` | 每帧实际 delta、step 数、accumulator/backlog、丢弃时间、交接延迟与读写时间线 | substep 会重复/插值工作并延后 callback；async 改变延迟与所有权，不等于确定性 |
+| Physics Asset、布娃娃、physical animation | Skeletal Mesh/Physics Asset owner；`constraints-ragdolls-active-physics`；角色另走 `character-controller-movement` | 资产 revision/hierarchy、constraint frame/limit/collision pair/profile/drive、CVD joint/contact、target error/impulse、pose handoff、时序 | editor field、profile、节点、server 行为均需验证 |
+| 联机刚体、预测、回滚、回放 | server authority/network owner；`networked-deterministic-physics` | 输入与 snapshot 历史、修正频率/幅度、首个分歧 frame、hash/state 比较、event log、replay/rollback | transform 复制只是一种修正，不是确定性证明；不能承诺 bitwise determinism |
+| 车辆悬挂 | 已声明的车辆插件/资产/runtime owner；`vehicle-physics` 加网络路由 | 悬挂 contact、wheel load/slip、chassis、输入/历史/修正、CVD 刚体与接触、timing | Classic/Modular 可并存；准确 plugin、节点、C++、网络面须验证 |
+| Chaos Cloth | Cloth asset/solver/runtime owner；`cloth-rope-soft-bodies` | 资产/solver/config/host/collider/LOD/cache、粒子、penetration、stretch、tick、authority | workflow、debug、server 角色版本相关；默认不得升级为权威模拟 |
+| Flesh | Flesh plugin/Dataflow/tet asset/solver/world owner；`cloth-rope-soft-bodies` | tetrahedral 数据、constraint/collision、tick、deformation、cache、timing | runtime、cache、碰撞、网络成熟度须标为 experimental/unknown，直至验证 |
+| Geometry Collection、Fracture、Fields | destruction asset/runtime owner；`destruction-fracture-fields` 加网络路由 | collection revision、cluster、damage/strain、field、break/collision event、cache-vs-live、计数、timing | 节点、field、cache、event、replication 与 geometry surface 版本相关 |
+
+车辆、ragdoll、Cloth、Flesh、破坏必须采用隔离场景和独立验收，禁止以同一“压力场景调参”混为一个问题。Cloth/Flesh/破坏默认仅 cosmetic；若声明 authoritative，必须单独证明其权威、历史、回滚和网络行为。
+
+## Evidence and migration
+
+每个假设必须保留相同 manifest 的 A/B capture ID，且 B 只有一个变化。CVD 用于物理状态、query、solver、constraint 与捕获来源；Unreal Insights/Timing Insights 或已文档化计时用于线程、task、timer、counter 的 CPU 归因。CVD 或 FPS 单独都不能归因 CPU。每组报告 server 与目标硬件的 p50/p95/p99、实际步数、backlog、域计数、首个分歧及 capture 链接。
+
+网络证据须显式包含：server-authoritative 模型；predicted/interpolated/cosmetic 分类；输入和状态 history 长度；correction 阈值；rewind/resimulation 范围；事件语义（create/destroy/contact/break/sleep）；LAN 与 RTT/jitter/loss/reorder/duplicate/drop/burst 故障矩阵；history exhaustion、late/invalid input；state/hash 比较；replay seek；车辆与 ragdoll rollback。保留输入、snapshot、CVD、timing 和 event log。回放验收以状态、事件和容差为准，不以 transform-only 或“完全位级一致”宣称为准。
+
+官方来源/版本/成熟度/表面矩阵：
+
+| 官方来源（2026-08-27 读取） | 可用主张 | 表面与限制 |
+|---|---|---|
+| Epic UE 5.8 Physics、Simple versus Complex Collision、Physics Sub-Stepping | Chaos 范围、简单/复杂碰撞概念、substep 成本与回调取舍 | 公共概念；不验证本项目 enum、UI、cvar、async 安全或数值 |
+| Epic Networked Physics Overview | 权威、history、修正、rewind/resimulation | 概念/C++导向；精确 mode、API、成熟度须本构建验证 |
+| Epic CVD Getting Started/Capturing Data | body、geometry、collision/joint/ground constraint、query、client/server/packaged/PIE 捕获 | CVD 通道/命令/开销及 standalone/source boundary 未确认 |
+| Epic Timing Insights | thread/task/timer/counter CPU/GPU 归因 | instrumentation channel 依赖构建 |
+| Epic Physics Asset、Chaos Vehicles/Modular Vehicles、Clothing Tool、Chaos Flesh、Geometry Collections/Fields | 各资产/solver/插件的当前概念 | 具体节点、网络、缓存和可用性均版本敏感 |
+| Epic UE 5.8 Release Notes | CVD、cloth、fracture、core 仍在演变 | 非完整 API/兼容清单 |
+
+以上仅是 UE 5.8 文档快照，并非项目版本证明；社区帖只能提供检索词，不能证明 API、设置、成熟度或支持面。
+
+迁移账本：
+
+| 旧建议 | 最后验证上下文 | 当前 Chaos 概念 | 支持表面 | 验证来源 | owner | 替换状态 | 测试 |
+|---|---|---|---|---|---|---|---|
+| `PhysXScene`/`PxScene` | 未提供 | world/solver/query 概念待 exact build/source 映射 | 原处方 removed/unsupported | 项目构建、授权 source 或官方对应文档 | physics/query | 不猜测替代 | compile/runtime/query |
+| PVD | UE4 时代帖，未验证 | CVD 加 Unreal Insights | 旧路径 removed；CVD surface version-specific | CVD 与 Timing Insights 官方文档、本构建 | evidence | 当前路径待验证 | 匹配 CVD+timing capture |
+| `UDestructibleComponent`/APEX | 未提供 | Geometry Collection/Fracture/Fields/cache/events | 原类/路线 removed/unsupported | 项目资产与本构建 | destruction | 不猜测 class | asset/event/replay |
+| `PxVehicleDrive4W` | 未提供 | 明确选择 Chaos 或 Modular vehicle system | 原 API removed/unsupported；新插件 version-specific | plugin/build/官方车辆文档 | vehicle | 待选择并验证 | compile/asset/input/history/correction |
+| “一揽子多 toggle” | 当前未控制变量 | 隔离假设 | combined fix unsupported | 匹配 A/B captures | physics lead | 拒绝 | 每变量正确性+成本矩阵 |
+
+任何最终采用的具体 C++ 符号必须在声明 build 编译；Blueprint 节点必须 load/execute；setting 必须在该 build 的声明平台存在。否则记录为 unknown/version-specific，而非用近似名称替换。
+
+## Acceptance
+
+开始实施前须具备完整 gate、确定的输入驱动复现、上述 owner/routes、源矩阵、迁移账本与捕获来源。每项方案的通过条件如下：
+
+| 验收面 | 通过条件 |
+|---|---|
+| 节奏与预算 | 目标硬件上实际 60 Hz；服务器 physics CPU p95 ≤ 3 ms，且有匹配 CVD+Insights/timing 证据；报告 p50/p95/p99、backlog、missed step |
+| 刚体 | 在声明容差内无非预期 tunnel、接触/constraint error 受控、sleep 与查询不变量成立；只接受单变量 A/B 改善 |
+| 调度 | fixed、frame-dependent、substep、async state handoff 分开记录；无未验证跨线程读写；回调顺序与生命周期可重现 |
+| 网络与回放 | authority/history 完整；故障矩阵、correction、首个分歧、hash/state、事件、replay seek、rollback 全部通过；不以 bitwise 或 transform-only 代替 |
+| 专项系统 | 车辆、Physics Asset/ragdoll、Cloth、Flesh、Geometry Collection 各自隔离通过；任何权威 deformable/destruction 另行验证 |
+| 表面与迁移 | 所有具体符号 compile，节点 load/execute，setting 存在；没有肯定的 PhysX/APEX/旧车辆路径；迁移建议可重复验证 |
+
+以下任一项为致命停止条件，立即停止调参和发布：non-finite state；authority 或 history 损坏；未验证/线程不安全访问；不支持的 geometry、plugin 或 API；capture provenance 缺失；安全预算突破；不可复现的迁移建议。

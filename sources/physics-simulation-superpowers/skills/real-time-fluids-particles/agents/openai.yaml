@@ -1,0 +1,6 @@
+interface:
+  display_name: "Real-Time Fluids and Particles"
+  short_description: "Design bounded interactive fluid simulation"
+  default_prompt: "Use $real-time-fluids-particles to select and validate interactive water simulation."
+policy:
+  allow_implicit_invocation: true

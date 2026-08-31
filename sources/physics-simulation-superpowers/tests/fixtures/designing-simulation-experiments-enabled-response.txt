@@ -1,0 +1,105 @@
+# 可执行的公平比较计划
+
+## 结论范围与待验证假设
+
+现在不能把两个既有数字相除，也不能写出「FlowX 在同等质量下快 2 倍」或「同等预算下质量更好」。已知的只是作者/现有报告分别在不同设置下给出的运行数字：FlowX 为 RTX 5090、Windows 11、1440p、120 Hz、200k particles、CityFlood；FluidBase 为 RTX 4090、Ubuntu 22.04、1080p、60 Hz、100k particles、DamBreak。硬件、操作系统、场景、时间步、分辨率、粒子数、renderer、warm-up、计时区间和 error metric 都不匹配；这些是相互矛盾的工作负载条件，不构成可比较的直接观察，也不支持 2× 比率。
+
+本实验的条件性假设是：在实际可用的一台共同机器上、用锁定的共同 scene/initial state、共同 fidelity 和共同测量协议，FlowX 相对 FluidBase 在相等计算预算下取得更低的预先锁定的归一化状态误差；并且在 owner 批准的同一质量目标下具有更短的连续、同步 time-to-target。2× 只是待检验的效应要求，不是 quality target、margin 或统计判据。若共同硬件、共同场景支持、reference/evaluator、quality target、容忍度或不确定性规则没有落实，confirmatory comparison 与任何论文表述均被阻断。
+
+## 两阶段与公平性合同
+
+48 小时窗口内先进行受 1 GPU-hour 总上限约束的 preflight；剩余最多 5 GPU-hours 仅在所有 claim-critical 输入锁定、且 preflight 测得的成本显示完整配对矩阵可放入总 6 GPU-hours 时，才可用于 confirmatory phase。该划分是资源保留，而非假定的性能阈值。没有实际可用的共同 GPU/软件环境时，记录为 blocked，不将 RTX 5090 或 RTX 4090 视为可用。
+
+在 preflight 前登记并哈希下列合同；任何不匹配项要么成为单独探索变量、不得支撑主张，要么阻断实验：
+
+- FlowX 和 FluidBase 的不可变 revision/commit、build flags、dependencies、configuration、precision，以及完全相等的 tuning allowance；不得在某一方法失败后专门调参。
+- 一台实际共同机器的 GPU、CPU、RAM、OS、driver/runtime、power/clock、affinity 和 memory cap；每次运行写入 machine fingerprint。两法在同一环境执行，不能把历史论文环境当作实验环境。
+- 两法均可运行的 CityFlood 与 DamBreak 的同版资产/generator、scale、boundary/contact model、horizon、output times、initial-state hash 与 deterministic sub-seed。preflight 先验证双方是否支持每个共同场景；不支持的场景从 confirmatory suite 排除并报告，不能以各自专属场景互比。若没有至少一个共同场景，停止。
+- 相同的 timestep、substeps、solver iterations/tolerance、resolution、particle/body count、horizon、sampling 和 output schedule。具体值目前未知，须由 owner 在能力确认后锁定；不得把 120/60 Hz、200k/100k 或 1440p/1080p 混作相同 workload。
+- 同一 renderer 与版本（若质量评估需要 rendering）、相同 loading/JIT/allocation/transfer/I/O/render 的纳入规则、固定 warm-up rule、固定 timed boundary 和显式 GPU/device synchronization。只记录同步完成后的耗时，不用异步 host launch time。
+
+preflight 使用 deterministic seed `0`、每个可运行的 method–common-scene cell 一次、相同短 warm-up 和同一锁定 horizon；它只验证可运行性、哈希、同步计时、日志和预估每运行成本，不用于比较、选优或估计确认性样本量。把所有尝试（含失败）写入 schedule、命令、config hash、状态、已用预算和失败原因。
+
+## 两个明确区分的比较
+
+**Fixed-budget（quality at equal budget）**：在共同场景、相同初态/seed、fidelity、horizon、输出时刻、memory cap 和 tuning allowance 下，对两法施加同一个预先批准的同步 wall-time/step-or-iteration cap。该 cap 目前未提供，因此 confirmatory fixed-budget cell 在批准前不可执行。达到 cap 时保留已生成输出，按同一主 quality metric 评价，报告实际同步耗时、peak memory、完成步数和所有 stability 状态；不把它解释成 time-to-target。
+
+**Fixed-quality（time to one target）**：锁定同一个主 quality estimator、evaluation interval、quality target、最大同步 time cap 和达到目标的连续判定窗口。主质量定义为在锁定输出时刻、相对于 owner 提供并锁定的 reference trajectory/state、由同一 evaluator 计算的归一化状态误差（无量纲，越低越好）；reference/evaluator 和 target 的数值尚未提供，故此比较暂时阻断。每次运行测量首次达到该目标并持续通过预定连续窗口的同步 elapsed time。未达到目标、超时、NaN/divergence 或失去稳定性的运行均按 capped/censored 记录，保留其 cap、最后误差和原因，绝不删除或用较宽目标替代。
+
+## 测量、配对与分析
+
+主 decision metric 是上述归一化状态误差：fixed-budget 报告同一 cap 下的配对差（FlowX − FluidBase，负值表示 FlowX 更好）；fixed-quality 报告首次连续达标的同步 time-to-target 的配对差/比率，并将 censored observation 明示。性能次指标为同步 wall time per simulated step、端到端 timed-region time、peak GPU memory；质量次指标为各 output time 的误差轨迹；稳定性指标为 NaN/divergence、failure rate、constraint/penetration error 与 drift；实时适用性指标为每个锁定 physics-step budget 的 latency 分位数、over-budget rate 和最长连续 over-budget streak。任何 renderer-only 指标均不得替代主状态误差。
+
+confirmatory phase 在 owner 批准 seed count、repetitions、quality target、margin、confidence/interval method、aggregation 和算力估计后才启动。届时每一 `(scene, seed, repetition)` 成对运行两法：同一 initial state，按 session block 组织（block 记录机器/温度/后台负载等可控时段），每个 block 内随机化 treatment order，保持平衡，不丢弃任何 raw run。当前 preflight 的一粒 seed 和一次 repetition 不支持 variance、confidence interval、equivalence、non-inferiority 或「2×」推断；它只能给出可行性和成本输入。
+
+## Ablation、资源与停止规则
+
+FlowX 的 full locked configuration 是主处理。仅当其文档化且可复现的 component switch 可用时，新增一次一因子 ablation（例如“关闭该已登记 switch，其他合同完全不变”），并把机制、revision/config hash 和预期影响写入 registry；不能凭空假定某个 switch 存在。FluidBase 是唯一比较 baseline，不能把其论文的历史数字再作为第三个 cell。
+
+资源账本按 `methods/configurations × common scenes × approved seeds × approved repetitions` 计算，另加 warm-up、timed duration、失败 rerun、CPU/RAM/storage 和日志开销。preflight 在 1 GPU-hour 内逐 cell 记录实际 GPU/wall time、peak memory、日志大小与可用场景数；基于这些测量才估算 confirmatory worst case。全部工作不得超过 6 GPU-hours 或 48 小时；若最小完整配对设计放不进余下预算，应减少预先声明的 operating points/场景，不能牺牲配对、换用不共同硬件，或拿 pilot 推断替代确认实验。
+
+立即停止并保留所有资料的条件是：6 GPU-hours 或 48 小时硬 cap；未获得共同硬件、锁定 revision/config、至少一个共同 scene、共同 fidelity/renderer/measurement boundary、reference/evaluator、quality target、容忍度或不确定性规则；同步计时不可靠；数值无效/NaN/divergence；或已完成所有预先批准且平衡的 cells。不得因为出现有利 ratio、p-value 或 frontier point 提前停止。go/no-go 仅在完整 confirmatory cells、预注册判据与不确定性分析齐备时决定；否则结果为 no-go/claim-blocked，而不是对任一方法的否定。
+
+```json
+{
+  "schema_version": "1.0",
+  "hypothesis": "历史 FlowX/FluidBase 数字仅为作者报告且工作负载不匹配，不能相除。条件性 confirmatory 假设：在实际可用的共同环境、锁定共同场景/初态/保真度和测量合同下，FlowX 在相等预算下有更低的归一化状态误差，并在 owner 批准的同一质量目标下有更短连续同步 time-to-target；2× 不是质量目标或判据。共同硬件、共同场景支持、reference/evaluator、target、margin 与不确定性规则未知时，confirmatory claim 被阻断。",
+  "independent_variables": [
+    "treatment：锁定 revision/config 的 FlowX 或锁定 revision/config 的 FluidBase；相等 tuning allowance",
+    "comparison mode：fixed-budget quality-at-equal-cap 或 fixed-quality time-to-one-target；两者分开分析",
+    "共同 scene、seed、session block 和 repetition；它们为预登记的配对/分块因素，不得与 treatment 混淆"
+  ],
+  "dependent_variables": [
+    "主质量：锁定 output times 上相对锁定 reference trajectory/state 的归一化状态误差（无量纲，低为好）",
+    "性能：同步 wall time per simulated step、端到端 timed-region time、首次连续达标的同步 time-to-target、peak GPU memory",
+    "稳定性：NaN/divergence/failure、constraint/penetration error、drift",
+    "实时适用性：锁定 physics-step budget 的 latency quantiles、over-budget rate、最长连续 over-budget streak"
+  ],
+  "baselines": [
+    "FluidBase：在 preflight 前锁定不可变 revision/commit、build flags、dependencies、configuration、precision 和相等 tuning allowance；历史 RTX 4090/Ubuntu/DamBreak 数字只作 reconnaissance",
+    "FlowX：在 preflight 前锁定不可变 revision/commit、build flags、dependencies、configuration、precision 和相等 tuning allowance；历史 RTX 5090/Windows/CityFlood 数字只作 reconnaissance",
+    "共同环境：只使用实际可用的一台共同机器及锁定 OS、driver/runtime、power/clock、affinity、memory cap 和 machine fingerprint；不假定 RTX 5090 或 RTX 4090 可用"
+  ],
+  "fixed_budgets": {
+    "global_hard_caps": "总计最多 6 GPU-hours、48 wall-clock hours；保留所有失败、capped 和 completed run 的已用预算与原因。",
+    "preflight": "最多 1 GPU-hour；seed 0、每个可运行 method–common-scene cell 一次，验证共同场景支持、哈希、同步计时、日志和每运行成本；不产生 confirmatory 比较。",
+    "fixed_budget_confirmatory": "同一预先批准的同步 wall-time/step-or-iteration cap、memory cap、fidelity、horizon、output schedule 和 tuning allowance 必须同时施给两法；具体 cap 尚未知，批准前此 phase blocked。",
+    "fixed_quality_confirmatory": "同一预先批准的主 estimator、target、连续通过窗口、evaluation interval 与最大同步 time cap；未达标为 capped/censored，具体 target/cap 尚未知，批准前此 phase blocked。"
+  },
+  "scenes": [
+    "CityFlood：仅在 FlowX 与 FluidBase 都支持同版 asset/generator、scale、boundary/contact model、horizon、output times 和 initial-state hash 后纳入共同 suite。",
+    "DamBreak：仅在 FlowX 与 FluidBase 都支持同版 asset/generator、scale、boundary/contact model、horizon、output times 和 initial-state hash 后纳入共同 suite。",
+    "若无至少一个共同场景，停止 confirmatory 比较；不得用各自专属场景互比。"
+  ],
+  "metrics": [
+    "主 decision metric：归一化状态误差；fixed-budget 报告配对差 FlowX−FluidBase，fixed-quality 报告首次连续达标同步 time-to-target 的配对差/比率与 censoring。",
+    "计时合同：固定共同 warm-up 和 timed boundary，明确 loading/JIT/allocation/transfer/I/O/render 的纳入规则，device/manual synchronization 后计时，记录 component timings。",
+    "每 run 保存 raw output、exact command、config hash、machine fingerprint、随机化 schedule、状态、已用预算和失败原因。"
+  ],
+  "seeds": [
+    0
+  ],
+  "repetitions": 1,
+  "tolerances": {
+    "quality_target_and_margin": "未知；owner 必须在 confirmatory phase 前批准同一 quality target、工程/科学 margin、reference trajectory/state 与 evaluator。目标或 margin 不能从‘2×’、历史论文数字或 pilot 反推。",
+    "confidence_and_aggregation": "未知；owner 必须在 confirmatory phase 前批准 confidence level、interval/test、censoring analysis、aggregation 与判定方向。当前 seed 0、repetition 1 只用于 preflight，不支持确认性不确定性结论。",
+    "replay_and_fidelity": "未知；必须锁定 timestep/substeps、iterations/tolerance、resolution、particle/body count、horizon、sampling、renderer 与所有可接受 replay tolerance；缺任一项即阻断主张。"
+  },
+  "ablations": [
+    "全配置 FlowX 为主处理；仅在存在已文档化、可复现的 FlowX component switch 时做单因子 ablation，其他预算、场景、seed、测量合同与 revision 保持不变，并登记机制与 config hash。",
+    "若没有可用且已文档化的 switch，记录 ablation unavailable；不得虚构组件或改变多个因素。"
+  ],
+  "resource_estimate": {
+    "planned_matrix": "confirmatory cells = methods/configurations × 已验证共同 scenes × owner 批准 seeds × owner 批准 repetitions；每 cell 加共同 warm-up、timed duration、日志、失败 rerun、CPU/RAM/storage。",
+    "known_limits": "6 GPU-hours 总上限、48 小时决策窗口；preflight 最多 1 GPU-hour，剩余最多 5 GPU-hours 仅在成本测得且关键输入锁定后使用。",
+    "unknowns_and_gate": "每运行成本、可用共同硬件、共同场景数、confirmatory seed/repetition count、目标、precision/power rule、CPU/RAM/storage 均未知。preflight 先实测 GPU/wall time、peak memory、日志大小与可运行 cells；若最小平衡配对矩阵不适配余下预算，减少预声明 operating points/场景而不破坏配对。"
+  },
+  "stop_conditions": [
+    "达到 6 GPU-hours 或 48 小时 hard cap，停止并保留所有 completed、failed 和 capped cells。",
+    "缺少实际共同硬件、两法锁定 revision/config、至少一个共同 scene、共同 fidelity/renderer/measurement boundary、reference/evaluator、quality target、margin 或 confidence/interval/censoring rule 时，阻断受影响的 confirmatory claim。",
+    "同步计时不可靠、配置/初态哈希不匹配、数值出现 NaN/divergence 或其他无效运行时停止该 cell，记录消耗和原因；不得删除或静默 rerun。",
+    "完成全部预先批准、配对、分块并随机化的 cells 后停止；不得因有利 ratio、p-value 或 frontier point 提前停止。",
+    "go/no-go 仅在完整 confirmatory cells 和预先批准的 target/margin/uncertainty rule 均满足时决定；否则标记 no-go/claim-blocked。"
+  ]
+}
+```

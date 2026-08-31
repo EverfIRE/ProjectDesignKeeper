@@ -8,14 +8,14 @@
     "name": "EverfIRE",
     "url": "https://github.com/EverfIRE"
   },
-  "homepage": "https://github.com/EverfIRE/ProjectDesignKeeper#readme",
+  "homepage": "https://github.com/EverfIRE/ProjectDesign#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/EverfIRE/ProjectDesignKeeper.git",
-    "directory": "source"
+    "url": "https://github.com/EverfIRE/ProjectDesign.git",
+    "directory": "sources/project-design-keeper"
   },
   "bugs": {
-    "url": "https://github.com/EverfIRE/ProjectDesignKeeper/issues"
+    "url": "https://github.com/EverfIRE/ProjectDesign/issues"
   },
   "engines": {
     "node": ">=20"

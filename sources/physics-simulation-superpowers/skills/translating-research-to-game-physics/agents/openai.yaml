@@ -1,0 +1,6 @@
+interface:
+  display_name: "Research to Game Physics / 研究转游戏物理"
+  short_description: "Gate research transfer into production game physics"
+  default_prompt: "Use $translating-research-to-game-physics to turn this research result into an evidence-bound Unreal game-physics transfer brief."
+policy:
+  allow_implicit_invocation: true

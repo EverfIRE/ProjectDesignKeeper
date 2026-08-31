@@ -1,0 +1,90 @@
+# Design verdict
+
+Do not implement the proposed fix. It combines a variable simulation clock, post-solve contact changes, transient Box2D data treated as durable state, unconstrained handle lifetimes, blanket CCD, and a replay claim that is much broader than Box2D can support. Those choices explain the observed symptoms and would make rollback failures difficult to localize.
+
+## 1. Establish the Box2D contract first
+
+Make the Box2D revision part of the simulation protocol:
+
+1. Vendor Box2D or use a submodule at one exact tag and commit. Record the commit, source-tree hash, CMake options, compiler and floating-point flags, target architecture, and the hashes of both the installed headers and linked library. Build the Windows and Linux binaries from that source; quarantine the unrecorded binary.
+2. Add a small adapter compile/link probe to CI. It should include only the pinned public headers, create and destroy a world/body/shape/joint, install the callbacks actually used, step once, drain each event stream, run each selected query/cast, and read the profile/counters. This catches a header/library mismatch and snippets copied from a later `main`.
+3. Record the Box2D version reported by the pinned build, if that revision exposes one, but do not use a semantic version alone as the identity. The commit and binary hash are authoritative.
+4. Put every Box2D call behind one adapter. An update to Box2D, solver settings, fixed step, substep count, worker/task configuration, or relevant build flags increments a replay/simulation version and reruns the qualification suite.
+
+The stale 2.4 pattern is a C++ object graph: `b2World`, `b2Body*`, fixtures, `b2Joint*`, a contact-listener class, and `world.Step(dt, velocityIterations, positionIterations)`. The 3.x C interface uses opaque value IDs such as `b2WorldId`, `b2BodyId`, `b2ShapeId`, and `b2JointId`; shapes replace the old fixture-facing usage; operations are free functions; and `b2World_Step(worldId, dt, substepCount)` takes a substep count rather than the 2.4 velocity/position iteration pair. World event getters return per-step buffers, and filtering, pre-solve, task, and query hooks use C callbacks. Exact names, flags, and event fields must come from the pinned headers—never from a 2.4 example or current `main`.
+
+## 2. Make simulation time independent of rendering
+
+Drive Box2D with an integer tick clock and a fixed `dt`. Accumulate render time, execute zero or more fixed ticks, and render an interpolation between the two most recent completed states. A 48 Hz and a 240 Hz renderer must consume the same tick/input stream. Cap catch-up work with an explicit overload policy, but do not enlarge `dt` or change the substep count when rendering is slow. Replay tick numbers and tick inputs, not captured render deltas.
+
+Choose the fixed rate and substep count by a measured matrix, for example fixed rates of 60 and 120 Hz crossed with 1, 2, 4, and 8 substeps. Before running it, define game-unit acceptance limits for maximum penetration, lift/joint drift, grounded-state errors, one-way failures, and projectile misses. Select the cheapest configuration that passes every adversarial scene and the CPU percentile target. Then freeze `dt` and substeps as protocol constants. An average below 3 ms is insufficient: record per-tick p50/p95/p99/max and also the total physics cost of catch-up on a 48 Hz render frame. Leave headroom for event translation and gameplay queries.
+
+## 3. Use a physical character consistently
+
+For this game, start with one dynamic capsule and let Box2D solve its physical contacts. This fits the need to ride translating/rotating platforms, interact with lifts, and receive physical impulses. Drive it with velocity/forces/impulses subject to explicit acceleration limits. Do not teleport it to a ray result; that bypasses continuous collision, injects penetration, destroys meaningful relative velocity, and fights the contact solver.
+
+A downward ray is only a probe. It does not describe the capsule footprint, a usable support normal, or whether the hit is currently touching. Derive support after each fixed step from the capsule's actual contact manifolds (or the pinned revision's body contact-data API): orient the normal toward the character, require a walkable upward normal and relevant contact point/separation, reject sensors, side walls, and ceilings, and identify the supporting body. Maintain a small, explicit support hysteresis/coyote-time policy in ticks if the game wants it. Emit `landed` only on the gameplay transition from unsupported to supported, not once per contact-begin event.
+
+Make moving platforms kinematic and move them on the fixed tick with velocity, or with the pinned API's target-transform facility if present. Do not teleport them per render frame. Continuous kinematic velocity lets the solver's relative velocity and friction carry the capsule. Test friction, acceleration, reversal, rotation, edges, and sleep/wake. If design requires stickier platform behavior than friction provides, implement a bounded gameplay rule using the support body's velocity; do not snap world position.
+
+Queries, rays, and shape casts remain useful for look-ahead, ledge/step tests, spawn validation, and fast swept gameplay tests, but they are not a second collision solver. Prefer a capsule/shape cast over a center ray where the capsule volume matters.
+
+If later acceptance tests show the physical capsule cannot deliver the desired crisp movement, replace it with a custom geometric controller rather than mixing teleportation with a dynamic body. Such a controller should overlap/depenetrate, sweep the capsule, clip/slide against collision planes, apply an explicit step and slope policy, and add the support platform's point velocity/displacement. It also needs an explicit policy for pushing dynamic bodies. Use Box2D's mover helpers if and only if they exist in the pin; otherwise build it from the pinned overlap and shape-cast APIs. That is a different controller contract and should be benchmarked separately.
+
+## 4. Resolve one-way platforms before the solver
+
+A one-way platform is a solid collision shape with a pre-solve decision, not a sensor and not a contact disabled after `b2World_Step`. Mark the small set of relevant shapes for pre-solve callbacks. For a character/platform pair, decide from stable tick state: the platform's allowed local normal/top plane, the character's previous foot position, relative normal velocity, a tolerance/hysteresis band, and an explicit drop-through timer. Disable while approaching from the forbidden side or during drop-through; once the character is accepted above the top plane, keep the contact enabled until it has clearly separated. Account for moving and rotating platforms by evaluating in platform space.
+
+Post-step disabling is too late because impulses have already been solved. A rule based only on the current position can also flip while overlapping, so tests must cover passage from below, landing from above, side contact, jumping, drop-through, fast descent, platform upward/downward motion, reversal, spawn overlap, and stacked one-way platforms.
+
+## 5. Define ownership, IDs, and event lifetimes
+
+Opaque 3.x IDs are handles, not durable gameplay identities. Revision bits and debug validity checks can expose some stale uses, but they are not a lifetime system.
+
+Use these rules:
+
+- The world registry owns all Box2D objects. An entity has a stable game handle `(index, generation)` mapped to its current body ID. Collider and joint records have the same kind of stable handle and store their current Box2D IDs only inside the adapter.
+- A body owns its attached shapes. The adapter also records every incident joint. Destruction is normalized into a tick-boundary command: remove joints, remove/clear shape records, destroy the body, clear the mapping, and increment the game generation. Even if Box2D cascades some destruction, the adapter must invalidate every corresponding record.
+- Never put a raw `b2BodyId`, `b2ShapeId`, `b2JointId`, event pointer, manifold pointer, or event-array element into a later-frame queue. Translate it immediately to stable game handles and copy only required scalar event data.
+- Drain body/contact/sensor event arrays immediately after each step and before any relevant object is destroyed or the next step begins. Treat the buffers as borrowed until the next step/API invalidation point specified by the pin. Use validity checks only as assertions, not as recovery.
+- Defer gameplay-requested destruction until event draining and contact/support extraction finish. When an overlapped sensor or visitor is destroyed, remove its stable handle from gameplay overlap sets explicitly; do not assume a future end event.
+
+Sensors should generate transient begin/end observations. Gameplay owns the persistent trigger-overlap set keyed by stable game handles. Contact events similarly report transitions; they are not persistent contact objects. Enable event production only on shapes that need it, because event volume is part of the budget.
+
+## 6. Scope CCD and bullets
+
+Do not enable bullet mode on every moving body. It increases continuous-collision work and does not replace sensible shape sizes, fixed stepping, or gameplay sweeps. First use the pinned revision's default continuous/speculative behavior and measure misses. Enable bullet behavior only for bodies whose required collision class needs the stronger sweep—for example, a small fast physical projectile that must hit moving dynamic targets. Define the threshold from displacement per substep relative to the projectile diameter and thinnest required target, then validate it with a speed/size/angle/target-motion matrix.
+
+Hitscan weapons should ray cast. Projectiles whose gameplay only needs the first impact can often shape cast their previous-to-next pose and resolve the hit directly. Reserve simulated bullet bodies for projectiles that need physical flight, ricochet, or impulses. Compare those three implementations in the adversarial projectile suite.
+
+## 7. State the determinism claim narrowly
+
+A seed does not make floating-point simulation portable. A defensible initial claim is: the same pinned Box2D binary and game build, fixed tick/substeps, floating-point environment, initial creation order/state, command order, task implementation/configuration, and tick input stream reproduce the tested per-tick hashes on the tested machine/configuration.
+
+Do not choose worker count from hardware concurrency for a rollback protocol. Freeze it initially, preferably at one while establishing the golden replay. If the pinned Box2D revision claims deterministic ordered multithreading, verify the actual task integration at worker counts 1, 2, 4, and the shipping count; only then claim worker-count invariance for that exact pin/build and tested range. Different CPU features, compilers, floating-point contraction/fast-math settings, standard libraries, operating systems, or future Box2D revisions are separate qualification targets, not implied guarantees.
+
+Comparing only final player transforms can miss an earlier divergence in velocity, other bodies, contacts, joint state, trigger state, or game logic. Hash every tick in stable game-handle order: all rollback-relevant body transforms and velocities, awake/enabled state where exposed and relevant, object existence/generations, gameplay controller/support/trigger state, joint/game state, input and command order, and translated events. On mismatch, save the first divergent tick and a structured state diff. Box2D does not provide a general public snapshot of all solver/contact warm-start state; rebuilding from spawn records is not equivalent to restoring an arbitrary mid-simulation world. Replaying from the identical initial construction and complete command/input history may be reproducible within the narrow contract above, but a transform-only checkpoint is not sufficient.
+
+## 8. Executable evidence plan
+
+Run release builds after a warm-up, for enough ticks to expose tails, and preserve raw samples plus the complete build/simulation manifest.
+
+| Suite | Required cases | Evidence / gate |
+|---|---|---|
+| API/lifetime | Adapter compile probe; wrong-header/link rejection; all joint/body/shape destruction orders; destroy while overlapping; world teardown | No invalid-call diagnostics, stale gameplay mappings, or queued raw IDs; sanitizers/debug validation clean |
+| Clock | Render schedules at 48, 60, 90, 144, and 240 Hz; jitter; long frame; catch-up cap | Identical simulation tick/input sequence and per-tick hashes regardless of render schedule; documented overload behavior |
+| Character/support | Flat/slope/wall/ceiling; seams; platform translation, rotation, acceleration, reversal, edge, sleep/wake; multiple simultaneous contacts | No false grounded ticks or duplicate land transitions; support body/normal correct; numeric penetration and drift limits pass |
+| One-way | Below-to-above, above landing, side, jump, drop-through, fast fall, moving/rotating platform, spawn overlap, stacked platforms | Expected enabled/disabled decision recorded per tick; zero incorrect blocks/falls in the corpus |
+| Sensors/events | Multiple overlapping actors; rapid enter/exit; sensor/body destruction; event storm | Exactly-once gameplay transitions where specified; overlap sets empty correctly; copied handles remain valid |
+| Joints/lifts | Loaded lift, reversal, limit/motor cases, destruction of either endpoint, low-FPS catch-up | Explicit joint drift/overshoot limits pass; no dangling joint records |
+| Projectile/CCD | Speed × radius × target thickness × impact angle × static/kinematic/dynamic target × substeps; bullet off/on; ray/shape cast alternatives | Zero misses in the declared gameplay envelope; smallest-cost CCD scope selected |
+| Dense performance | About 2,000 active shapes with representative contacts, sensors, joints, sleeping/waking, platform motion, and projectile bursts; worker-count matrix | Step plus adapter p50/p95/p99/max, catch-up cost, and peak memory meet the predeclared budget with headroom |
+| Replay | Repeated same-binary runs; worker matrix; Windows/Linux and compiler/CPU qualification lanes; intentional one-tick perturbation | First-divergence tick detected; only tested configurations are certified; any Box2D/build change invalidates the old certificate |
+
+For every performance run, capture Box2D's pinned `b2World_GetProfile` and `b2World_GetCounters` output (using the exact fields available in that revision), wall-clock step time, adapter event/query time, body/shape/contact/joint/island counts, sensor/contact event counts, task count, awake count, bullet count, allocation/peak memory data, and scene seed/input trace. Report percentiles and histograms, not one average. Keep separate cold-start and steady-state results and test the shipping task scheduler on each OS.
+
+The release gate is the fixed-rate/substep/worker configuration with the lowest measured cost that passes all correctness envelopes and remains under the percentile budget. Fail the gate on a stale API probe, any lifetime diagnostic, any replay hash divergence inside a claimed configuration, any projectile/one-way miss inside the declared envelope, or a p99 budget regression.
+
+## Workflow boundary
+
+Keep this Box2D adapter responsible for the pinned API manifest, ID translation/lifetimes, fixed-tick `b2World_Step` bridge, callbacks/events, character collision policy, CCD policy, Box2D profiles/counters, and the Box2D qualification corpus. Route the generic accumulator/render interpolation and overload policy to the core simulation-loop workflow. Route input logging, snapshot/checkpoint design, replay versioning, state hashing/diffing, peer compatibility, and rollback-window strategy to the core rollback/determinism workflow. Route benchmark orchestration, statistical regression gates, and CI artifact retention to the core performance workflow. The adapter supplies those workflows with deterministic tick commands, stable handles, hashes, metrics, and manifests rather than reimplementing them.

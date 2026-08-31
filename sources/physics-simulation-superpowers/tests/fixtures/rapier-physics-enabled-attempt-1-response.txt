@@ -1,0 +1,78 @@
+Do not implement the design as written. It relies on cross-binding, cross-version, and cross-platform guarantees Rapier does not provide.
+
+### Binding, version, and build decision
+
+- **Adapter policy:** Pin the Rust server to `rapier3d = 0.35.3`, tag `v0.35.3`, commit `b82079ac41310a8af438af95b49b8fa551ce650f`. Record 3D/f32, target, compiler, `Cargo.lock`, enabled features, and the built artifact hash.
+- **Adapter policy:** Pin browsers to `@dimforge/rapier3d-deterministic@0.20.0`, tag `js-v0.20.0`, commit `3e12c2679cb1940a876bde93af9cec0cf2f57944`. Lock the package, tarball/WASM hash, browser/runtime, and initialization path.
+- **Unavailable guarantee:** JavaScript 0.20.0 comes from the Rust 0.35.0/0.35.1 source era, not Rust 0.35.3. There is no current Rust/JavaScript API parity or promise of bit-identical simulation between them.
+- **Official guarantee:** The deterministic JavaScript artifact provides cross-platform determinism only for the same exact package, state, ordered inputs, and supported execution. Ordinary `@dimforge/rapier3d` is only locally deterministic. `-compat` changes packaging, while `-simd` selects performance; neither implies determinism.
+- **Rust decision:** Enable `enhanced-determinism` and `serde-serialize`. There is no `simd-stable` feature. Keep the default four-lane SIMD/scalar-fallback configuration and leave `parallel` off for the certification baseline. `parallel` is compatible with `enhanced-determinism`, but enable it in deployment only after the exact build passes parity testing at every supported thread count. Never combine `simd8` with `enhanced-determinism`; that combination is compile-time forbidden. Treat any `simd8` build as a separate, non-equivalent evidence domain.
+
+Following each package’s `latest` release independently is therefore unsuitable for rollback. Every upgrade creates a new compatibility domain and invalidates stored-snapshot assumptions.
+
+### Fixed-tick rollback and identity workflow
+
+Every peer must advance on a fixed simulation tick, not whenever a render frame arrives. Assign inputs and lifecycle commands to ticks and apply them in a canonical order. A tick should have one declared sequence such as:
+
+1. Restore or ingest tick-owned application state and ordered commands.
+2. Run any declared pre-step controller/query work.
+3. Step exactly one fixed `dt`.
+4. Drain and canonicalize events immediately.
+5. Run declared post-step queries.
+6. Hash and checkpoint the completed tick.
+
+Render interpolation stays outside this sequence. Replays must suppress duplicate audiovisual and network side effects.
+
+For JavaScript rollback:
+
+1. At a completed tick, save `World.takeSnapshot()` together with the full application checkpoint and manifest.
+2. To roll back, stop using the current owner and drain its `EventQueue`.
+3. Call the static `World.restoreSnapshot(bytes)`, which returns a **new** `World`.
+4. Invalidate every wrapper, controller, query result, and handle mapping associated with the old world.
+5. Install the replacement world, restore/rebuild application mappings and controllers, then replay ordered commands.
+6. Call `free()` on the old world only when no old view remains reachable. Also `free()` manually owned event queues.
+
+Restoring bytes into the existing world or retaining wrappers from it is unsafe.
+
+For Rust, transforms alone are not a rollback snapshot. With `serde-serialize`, serialize a complete owned bundle containing integration parameters plus all application-used body, collider, joint, island, broad-phase, narrow-phase, and CCD state. Include gameplay state and ID mappings. Reconstruct stateless pipelines such as `PhysicsPipeline` and `QueryPipeline` after decoding. Put the codec inside a versioned envelope and define an explicit rejection/recovery policy.
+
+Each checkpoint manifest must include binding, dimension, precision, exact version, package flavor, artifact hash, feature set, schema, and codec. Reject any mismatch before decoding.
+
+Raw Rapier handles must never be network entity IDs. They are local generational locators and can be reused after removal. Allocate durable application IDs, send only those IDs over the network, and maintain a per-world mapping between durable IDs and local handles. Checkpoint that mapping with application state, restore or rebuild it with the replacement world, and test add/remove/reuse explicitly.
+
+- **Unavailable guarantee:** Snapshot bytes are not guaranteed across package upgrades, between Rust and JavaScript, or even between independently versioned package flavors.
+- **Unavailable guarantee:** Handles have no permanent or cross-binding identity.
+- **Inference only:** Passing a particular compatibility matrix is evidence for those exact artifacts and targets, not a broader Rapier promise.
+
+### Minimum binding boundaries
+
+- **Queries:** Rust’s current `QueryPipeline` is temporary: it borrows the broad phase and object sets, reuses the BVH updated by stepping, and observes end-of-last-step positions. Do not implement the old persistent/manual-update model. JavaScript queries are methods on the current `World`. If poses are changed outside stepping, use only that binding’s documented propagation operation and test the exact observation point.
+- **Events:** Enable collider `ActiveEvents` deliberately. Drain `EventQueue` immediately after the declared step, translate handles to durable IDs while valid, copy required fields, normalize pair order, and consume the result. A later narrow-phase query cannot reconstruct every transient or substep-specific callback.
+- **Character controller:** `KinematicCharacterController` is a reusable translation-only query controller. Immediately after `computeColliderMovement`, copy `computedMovement`, grounded state, collision count, and each computed collision before another computation. Persist gameplay-relevant results in application state and keep controller configuration and tick phase fixed.
+
+### Determinism and hash matrix
+
+At every tick, compute two hashes:
+
+- A raw snapshot-byte hash, compared only within the same exact binding/artifact/manifest domain.
+- A canonical semantic hash keyed and sorted by durable application ID. Include lifecycle state, poses, velocities, sleeping/enabled/CCD state, collider and joint state, controller/application state, canonical events, gameplay-affecting query results, tick number, and configuration hash.
+
+Run at least this matrix:
+
+| Domain | Required comparisons |
+|---|---|
+| Rust baseline | Repeated runs on each supported Windows/Linux/macOS x86-64 and ARM64 target |
+| Rust rollback | Uninterrupted execution versus restore-and-continue at multiple ticks, including repeated restores |
+| Rust threading | `parallel` off versus on with 1, 2, and maximum supported workers |
+| Rust build variants | Every compiler/target/build-role combination; test `simd8` only as a separately reported domain |
+| Deterministic JS/WASM | Repeated and restore-and-continue runs in every supported Chromium, Firefox, and WebKit/Safari x86/ARM environment |
+| Browser scheduling | Main-thread and worker configurations used by production |
+| Rust versus JS | Compare semantic hashes every tick, but do not require or claim snapshot-byte compatibility |
+| Lifecycle stress | Deterministic add/remove sequences, handle reuse, sleeping/waking, callbacks, queries, controller cases, and shutdown ownership |
+| Negative controls | Reject every intentional manifest mismatch and verify that flipping one input bit produces a detected divergence |
+
+Report the first divergent tick and first divergent semantic field. One matching final transform from one desktop run proves neither identical intermediate state nor equivalent events, sleeping, handles, queries, or rollback continuation.
+
+Passing Rust-versus-JavaScript semantic comparisons remains project evidence, not an official guarantee. The networking design must therefore tolerate authoritative correction unless all peers are moved to one genuinely shared, certified simulation artifact.
+
+Keep generic concerns in their core workflows: fixed cadence and ownership in `architecting-real-time-physics`; authority, replay, reconciliation, and transport in `networked-deterministic-physics`; contacts/CCD in `rigid-body-collision-contact`; joints in `constraints-ragdolls-active-physics`; movement policy in `character-controller-movement`; reproduction in `debugging-testing-physics`; and budgets in `profiling-scaling-physics`.

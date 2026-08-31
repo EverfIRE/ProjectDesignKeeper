@@ -1,0 +1,66 @@
+## Network contract
+
+采用服务器权威的 gameplay physics：客户端对本地输入预测并回滚，远端对象按服务器快照插值；服务器验证输入以处理作弊与非法状态。不要把“权威收敛”称为“跨平台确定性重放”。
+
+保持 gameplay physics 固定 60 Hz。先声明并冻结以下网络契约，否则不能验收：
+
+- 服务器权威或 peer 权威，以及是否支持 authority transfer。
+- 目标平台、架构、编译器、构建选项、物理后端与版本矩阵。
+- 最大活动刚体、接触、约束、island 等容量上限。
+- RTT、jitter、丢包、乱序、重复包的目标与故障注入范围。
+- 带宽、快照历史内存、允许校正误差、回滚窗口、快照与哈希频率、确定性等级。
+- 输入缺失策略、等待窗口、积压策略和历史不足时的 resync 策略。
+
+定义带版本的输入/快照协议：包含 player/entity、tick、sequence、ack、量化后的输入和稳定排序规则。服务器与客户端均须缓冲、去重并按 tick 重排迟到、重复和乱序输入。仅丢弃过时的表现层数据；错过可回滚历史必须重同步。渲染只读取快照插值结果，不改变权威模拟。
+
+## Determinism and state contract
+
+明确区分五个可重复性等级：单次本地运行、同构建/配置、同二进制/架构/平台、跨构建/跨平台可重复、权威收敛而非确定性重放。不能混为“deterministic”。
+
+同一 seed、IEEE float、禁用多线程、每 tick 固定 RNG seed，或把位置/速度四舍五入到三位，都不能证明跨平台确定性；不得对实时物理状态做三位小数舍入。禁用多线程只能减少一种顺序来源，不能解决浮点、编译器、内部缓存与事件顺序差异。
+
+若要执行完整 rollback/lockstep，快照必须恢复或可按固定规则重建全部影响后续物理的状态：
+
+- gameplay 状态、刚体 pose、线/角速度、质量与惯量、flags 与 sleep 状态。
+- shape、material、filter、constraint/motor、warm-start 状态。
+- contact manifold、CCD/query cache，以及其他影响下一 tick 的内部缓存。
+- 所有 RNG stream/substream、权威游标、事件游标与 tick-keyed 事件状态。
+
+若物理引擎不能捕获这些内部状态，也不能以确定性规则重建，则跨平台纯输入 rollback/lockstep 被阻断；应使用服务器权威快照收敛，而不是宣布确定性。
+
+冻结并测试精度、rounding mode、denormal、FMA/SIMD、数学库、编译器 fast-math、资产烘焙、物理后端及版本。为对象、shape、constraint、contact、输入、事件、RNG stream、broadphase、manifold、island、solver work、job、callback 指定稳定 ID 与稳定顺序。序列化采用规范 schema/version、单位、量化、字节序、NaN 策略、稳定字段与实体顺序。
+
+每个 checkpoint 分层哈希输入、gameplay、physics、事件与完整状态。使用 `scripts/compare_replay_hashes.py`，报告首个分歧 tick、最小分歧层和最小状态组件，而不是只报告“哈希不同”。
+
+## Prediction, rollback, and correction
+
+客户端维护按 tick 索引的输入和完整可恢复状态。收到服务器权威输入或快照后：
+
+1. 恢复目标 tick 的状态。
+2. 丢弃或按固定规则重建失效 cache。
+3. 按稳定顺序重放已确认及本地预测输入。
+4. 将权威 gameplay 状态立即应用到模拟；只在表现层平滑校正。
+5. 将音效、粒子、UI 等副作用与权威状态分离，采用 idempotent、tick-keyed 事件，避免回滚重复触发或遗漏。
+
+远端实体使用快照插值，不参与本地的纯输入确定性承诺。发生历史缺失、不兼容或非有限状态、容量超限、未受信任输入，或不可恢复分歧时，停止继续错误重放并 hard-resync。
+
+在服务器物理 CPU p95 为 4 ms 的约束下，snapshot capture、hash、restore、resimulation 都必须计入预算；回滚深度和重模拟 tick 数必须由已声明的网络条件与历史预算推导，不可预设未声明的窗口或频率。
+
+## Acceptance
+
+以严格 A/B 对比验收：
+
+- A：现有纯输入跨平台 lockstep，附带“禁多线程、三位舍入、单一 seed、IEEE float”的主张，且不发送权威状态。
+- B：服务器权威、客户端 prediction/rollback、远端 snapshot interpolation。
+
+两组均覆盖静止、箱子堆、关节链与 motor、sleep/wake、CCD 与高速碰撞、同时接触、spawn/despawn、移动平台、RNG 与事件、支持时的 authority transfer、join-in-progress/reconnect、历史边界、丢包/乱序/重复包，以及每个已声明的平台与构建组合。
+
+记录并比较：
+
+- 分层哈希，以及含 cache、RNG、事件的状态差异。
+- 校正误差、回滚深度、重模拟 tick、副作用重复与取消。
+- 快照字节数、带宽、历史内存。
+- 活动刚体、接触、约束、island 的峰值及超限次数。
+- capture/hash/restore/resimulation 的 CPU 分布、服务器 physics CPU p95、hard-resync 与容量失配次数。
+
+只有所有已声明限制均满足、服务器 physics CPU p95 不超过 4 ms，且故障注入下无未解释分歧时才可接受。任何有限诊断遗漏、非有限或不兼容状态、未受信任输入、不可恢复分歧或预算超限都应失败、停止并 resync。未声明的平台矩阵、容量、网络条件、带宽/内存、容差、回滚窗口、快照/哈希频率或确定性等级，均是验收阻塞项。

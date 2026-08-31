@@ -1,0 +1,29 @@
+{
+  "name": "physics-simulation-superpowers",
+  "version": "0.1.0",
+  "description": "Evidence-driven workflows for real-time physics simulation development and research.",
+  "author": {
+    "name": "EverfIRE",
+    "url": "https://github.com/EverfIRE"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/EverfIRE/ProjectDesign",
+  "repository": "https://github.com/EverfIRE/ProjectDesign",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Physics Simulation Superpowers",
+    "shortDescription": "Build and investigate robust real-time physics simulations.",
+    "longDescription": "Provides focused workflows for real-time game physics development, diagnosis, research, and reproducible experiments.",
+    "developerName": "EverfIRE",
+    "websiteURL": "https://github.com/EverfIRE/ProjectDesign",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Research",
+      "Analysis",
+      "Code"
+    ],
+    "defaultPrompt": [
+      "请帮助我为实时物理模拟建立可验证的开发或研究方案。"
+    ]
+  }
+}

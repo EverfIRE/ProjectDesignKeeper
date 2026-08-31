@@ -1,0 +1,70 @@
+不能把这套“快速修复”上线。它混合了多个状态写入者、三个不同物理后端，并依赖并不存在的跨后端确定性。
+
+先做一个当天可完成的版本闸门：记录 `Application.unityVersion`、`ProjectSettings/ProjectVersion.txt`、`Packages/manifest.json`、`Packages/packages-lock.json`、目标平台，以及实际使用的 3D/2D/DOTS 后端。Unity 6 覆盖多个 6000.x 版本；在这些信息确认前，不猜 Project Settings 路径、默认值或 DOTS package API。
+
+| 后端 | 状态与运动 API | 查询 | 约束 |
+|---|---|---|---|
+| Built-in 3D | `Rigidbody`、`Rigidbody.AddForce`、`MovePosition`、`MoveRotation` | `PhysicsScene.Raycast`、`Overlap*`、`Cast*` | `Joint`、`ConfigurableJoint` |
+| Built-in 2D | `Rigidbody2D`、`AddForce`、`MovePosition`、`MoveRotation` | `PhysicsScene2D`、`ContactFilter2D` | `Joint2D` 系列 |
+| DOTS Unity Physics | ECS physics components/systems | `CollisionWorld` 查询 | DOTS joint components |
+
+DOTS 的组件名、系统组和查询签名必须按锁定的 `com.unity.physics` 版本核对；不能直接复用 MonoBehaviour/Rigidbody 控制器。
+
+实施规则如下：
+
+1. 每个刚体只能有一个运动状态写入者。删除在 `Update()` 中对同一动态刚体混用 `transform.Translate`、`transform.position` 和速度写入的代码。`Update()` 只采样并缓存输入；固定物理步中只选择一种控制方式：
+
+   - 动态体：力、冲量、扭矩，或明确拥有速度的控制器。
+   - 运动学体：`MovePosition` / `MoveRotation`。
+   - 瞬移、复位：显式设置 pose，并同时清理或恢复线速度、角速度；不得作为每帧移动方法。
+
+   Unity 6 目标版本应优先核对 `Rigidbody.linearVelocity`、`linearDamping`、`angularDamping`。旧代码中的 `velocity`、`drag`、`angularDrag` 以及 `Physics.autoSimulation` 不应凭经验批量替换；先在锁定版本编译一个兼容层，并依据该版本 API 文档处理 obsolete 成员。
+
+2. 把逻辑 tick 设为 `1/60`，但不要把 `FixedUpdate()` 当作严格墙钟 60 Hz。一帧可能执行零次或多次固定步，也可能因追帧限制而丢失累计时间。
+
+   - 普通客户端：固定步驱动物理，渲染帧只显示结果。
+   - 专用服务器和可控回放：使用独立 tick/accumulator，并在锁定版本确认 `Physics.simulationMode`、`PhysicsScene.Simulate(dt)`；2D 使用其独立 simulation mode/scene API。
+   - 同一进程同时存在 3D 和 2D 时，分别配置和推进，不能假设一个开关控制两者。
+   - 记录每 tick 实际 `dt`、追帧次数和丢 tick/过载事件。
+
+3. Interpolation 只解决渲染抖动，不修复穿墙或网络分歧。仅给本地可见、由物理控制的对象开启；相机在物理结果之后跟随。服务器、碰撞判定和回放必须使用真实物理状态，不能使用插值后的 transform。先消除双重写入，再评估 interpolation。
+
+4. CCD 按风险启用，不要全场 `Continuous Dynamic`：
+
+   - 高速、小尺寸、相对单步位移较大的关键动态体才启用合适 CCD。
+   - 静态墙、慢速箱子通常保留离散检测。
+   - 3D 的 `CollisionDetectionMode` 与 2D 的 `CollisionDetectionMode2D` 分开配置。
+   - 用“速度 × 固定步长 / 最薄碰撞体厚度”建立测试矩阵，实测离散、连续和 speculative 模式。
+   - CCD 不能修复直接改 transform、错误 layer、错误 collider、极端尺度或错误 query 时序。
+
+5. Solver iterations 只针对有证据的接触堆叠或 joint 不稳定逐体提高；不要全局盲升。先检查单位尺度、质量比、惯量、碰撞体厚度、穿插初始姿态和 fixed step。3D、2D、DOTS 的 solver 配置互不通用，具体属性与默认值按冻结版本验证。
+
+6. Joint 不能靠后续写 transform“纠正”。创建时固定 anchor、connected body、limits、drive 和 break 条件；避免悬殊质量比与初始穿插。分别测试无 joint、单 joint、完整链条。3D 的 `ConfigurableJoint`、2D 的 `Joint2D` 系列和 DOTS joints 应有独立适配与测试。
+
+7. 查询必须与对应物理世界和 tick 对齐：
+
+   - 3D 使用 `PhysicsScene` 查询并显式指定 layer mask、trigger 策略。
+   - 2D 使用 `PhysicsScene2D` 和 `ContactFilter2D`。
+   - DOTS 查询 tick 对应的 `CollisionWorld`，明确是在 build、simulate 之前还是之后。
+   - 不依赖隐式 transform 同步。若确有“改 Transform 后立即查询”的遗留路径，集中调用并测量 `Physics.SyncTransforms()`；不要用它掩盖架构问题。
+
+网络方案应改成服务器权威：
+
+- 客户端发送带 tick 的输入；服务器在固定 tick 模拟。
+- 服务器复制 tick、pose、线速度、角速度及必要的 gameplay 状态。
+- 客户端插值远端对象；本地玩家可预测，但收到权威快照后 rewind/replay 并平滑修正。
+- 回放至少保存版本指纹、平台、后端、初始状态、输入流、随机种子、场景/配置哈希和周期性权威快照。
+- 不承诺 PhysX、2D 物理和 Unity Physics 跨后端、跨版本、跨平台逐位确定。要求可靠结果时，以权威状态和校验点为准；若业务要求严格 lockstep，应选定并验证一个专门满足该约束的方案，而不是复制 transform。
+
+2 ms p95 应用捕获数据验收：在目标硬件、正式碰撞层和代表性物体/joint 数量下采集 Player Profiler，而不是只看 Editor；分别统计 simulation、broadphase/narrowphase、solver、queries、transform sync、脚本回调和 GC。至少报告 p50/p95/p99、最坏追帧步数，并分别比较 CCD、solver iterations 和 interpolation 的增量成本。
+
+建议验收门槛：
+
+- 60 Hz 连续运行时无 transform/rigidbody 双写入。
+- 高速测试集无穿墙。
+- 静止堆叠与 joint 场景无持续能量增长。
+- 延迟、丢包和纠正场景能够收敛。
+- 回放在校验点与权威快照一致；不以跨平台逐位一致为通过条件。
+- 目标硬件 physics CPU p95 ≤ 2 ms。
+
+通用物理工作流负责：最小复现、写入所有权、尺度/质量、固定步、碰撞层、CCD 选择、joint 隔离、查询时序和性能回归。只有 Built-in 3D 中仍可稳定复现的接触流形、solver、PhysX CCD、平台/SIMD 差异或原生崩溃，才转 PhysX 专项；2D 问题转 2D/Box2D 路线，DOTS 问题按锁定的 Unity Physics package 路线处理。

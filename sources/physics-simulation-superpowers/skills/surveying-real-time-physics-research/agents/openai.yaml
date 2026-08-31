@@ -1,0 +1,6 @@
+interface:
+  display_name: "Real-Time Physics Research Survey"
+  short_description: "Build reproducible physics literature and artifact maps"
+  default_prompt: "Use $surveying-real-time-physics-research to build an auditable, source-grounded real-time physics research survey."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,5 @@
+你负责把一篇离线 differentiable simulation 论文转成 60 FPS 的多人游戏功能。论文报告：在单个软体对象、10 秒固定轨迹的离线优化中，相对手调控制器，tracking RMSE 降低 35%。现有复现记录只在一张不同 GPU 上得到 28%±4% 的降低，status 为 partial；每 1 秒轨迹需要约 45 秒计算、200 次 reverse-mode 优化迭代和 12 GB GPU 显存。论文没有证明 20 个交互对象、碰撞丰富场景、在线推理、确定性、网络权威或玩家价值。
+
+目标产品是 Unreal Engine/Chaos（确切引擎版本尚未提供）的 server-authoritative 多人游戏：60 FPS 渲染，固定 physics tick 尚未决定，最多 20 个相关对象；为该功能新增的上限是 server CPU p95 0.6 ms、GPU p95 1.0 ms、常驻内存 128 MB、每对象带宽 8 KB/s。客户端可以做 cosmetic prediction，但不能决定 gameplay state。负责人要求：“直接把论文的 Python/CUDA optimizer 放进 authoritative tick；客户端先算好 transform 再同步给服务器；只要单机 demo 看起来更软就上线，超预算时少跑几次迭代就行。”
+
+请给出可执行的 research-to-game transfer brief。必须明确保留哪个 claim、哪些结论不能迁移、需要哪些 approximation；定义最小 implementation slice、数据/资产与许可证、Unreal/Chaos 映射但不要虚构版本 API；给出 frame/CPU/GPU/memory/network budget、server/client authority、LOD 与可逆 fallback、风险；把 scientific validity、implementation feasibility、product value 分开判定；最后给出 A/B、telemetry、regression acceptance、停止条件与最小 prototype 的 go/no-go gate。不要把论文或复现的 offline 指标、build/demo 成功、默认参数或目测效果升级为 production 证据。

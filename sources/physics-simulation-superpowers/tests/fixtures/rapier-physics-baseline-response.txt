@@ -1,0 +1,131 @@
+The proposed design is not safe for rollback lockstep. The key corrections are: lock one Rapier source version across bindings, use a scalar single-threaded deterministic build, keep snapshots local to the exact build that created them, replace the `World` when restoring, and use application-owned entity IDs.
+
+### Binding, version, and feature decision
+
+Do not follow Rust and npm `latest` independently. Pin exact versions and verify that `rapier3d` and `@dimforge/rapier3d` derive from the same Rapier core tag or commit. Record the native binary and WASM artifact hashes in the multiplayer handshake.
+
+For the determinism build:
+
+- Enable `enhanced-determinism`.
+- Disable `simd-stable`; SIMD and enhanced cross-platform determinism are incompatible goals and may be rejected by the build.
+- Disable `parallel` for rollback until the exact pinned release is proven deterministic under your workload. A single-threaded pipeline removes scheduling as a variable.
+- Use the same scalar precision, timestep, integration parameters, hooks, and feature set everywhere.
+- Do not assume the ordinary npm WASM bundle has the required feature configuration. Verify its build metadata or produce the browser WASM binding from the same locked source and deterministic configuration.
+
+If a matching deterministic browser artifact cannot be produced, treat the server as authoritative with correction/reconciliation—not as a bit-identical lockstep peer.
+
+Rapier’s enhanced-determinism mode is intended to improve cross-platform repeatability for the same version, configuration, initial state, and ordered inputs. It does not promise compatibility between independently versioned bindings, snapshot formats, package upgrades, application callbacks, or network protocols.
+
+### Snapshot and restore workflow
+
+`World.takeSnapshot()` should be treated as a private checkpoint for the exact Rapier binding/build that created it. Do not send it between Rust and JavaScript, and do not load it after an upgrade.
+
+A checkpoint at tick `T` should contain:
+
+- An owned copy of the local Rapier snapshot bytes.
+- The application’s stable-ID-to-handle mapping for that snapshot.
+- Entity lifecycle state and deterministic command sequence numbers.
+- Controller state, RNG state, pending inputs, and other gameplay state.
+- Any external event queues, query decisions, or caches that affect later simulation.
+
+On rollback:
+
+1. Stop at a fixed tick boundary.
+2. Select the checkpoint for tick `T`.
+3. Discard the current `World` and all body, collider, joint, controller, and query references derived from it.
+4. Call `World.restoreSnapshot(bytes)` and replace the old world with the returned world.
+5. Restore the application checkpoint and mapping associated with those bytes.
+6. Recreate or refresh external queues, controllers, and query state as required.
+7. Replay commands from `T + 1` in a canonical order.
+8. Suppress or deduplicate audiovisual and network side effects produced again during replay.
+
+Do not mutate a world for many ticks and then expect an old snapshot to be applied in place. Wrapper references from the discarded world must not be reused.
+
+Transform-only server state is insufficient for an exact restart. Subsequent simulation also depends on linear and angular velocity, sleep state, body type, enabled/CCD state, colliders and their properties, joints, sensors, filters, materials, lifecycle, controller/application state, and internal solver/contact history. For true exact recovery, replay from a compatible checkpoint and input log. An application-level state transfer can support authoritative correction, but it should not be described as restoring bit-identical Rapier internals.
+
+### Network IDs and compatibility
+
+Rapier handles are opaque, generational locators into one object set. They are useful only while the referenced object exists in that world. Removal permits slot reuse, and raw representations are not permanent IDs, cross-binding IDs, or stable serialization formats.
+
+Assign every replicated object an application-owned ID, such as a monotonic `u64` or UUID. Network messages contain that ID, never a Rapier handle. Each peer maintains:
+
+```text
+NetworkEntityId -> current local body/collider/joint handle
+```
+
+Checkpoint that mapping with the world. After restore, use the mapping saved for that snapshot; after deterministic creation or removal, update it atomically. Validate that a lookup still resolves to the expected object before acting on it.
+
+The connection handshake should include at least:
+
+- Physics protocol/schema version.
+- Rapier core tag or commit.
+- Rust binding and JavaScript binding versions.
+- Native executable and WASM hashes.
+- Feature flags, precision, and threading/SIMD mode.
+- Integration-parameter and gameplay-physics configuration hashes.
+
+Reject lockstep participation on a mismatch. Upgrades require new golden runs and invalidate old snapshots.
+
+### Simulation boundaries
+
+All peers must advance an integer simulation tick, not step when a render frame happens. Render frames accumulate elapsed time and interpolate between simulation states; they do not choose physics `dt`.
+
+At each tick, enforce a single phase order such as:
+
+1. Read commands for the tick.
+2. Sort lifecycle and gameplay commands by stable entity ID and sequence.
+3. Apply creates, removals, forces, impulses, and kinematic targets.
+4. Run character queries and set next kinematic poses at the defined phase.
+5. Step Rapier once with the fixed `dt`.
+6. Drain events.
+7. Perform post-step gameplay queries.
+8. Canonicalize gameplay-visible results and compute the tick hash.
+9. Commit only side effects outside the rollback horizon.
+
+Relevant boundaries include:
+
+- Queries must observe a query pipeline updated for the current body/collider poses. Never depend on intersection iteration order or an arbitrary “first” result when hits tie; collect and sort by stable ID and numeric tie-breakers.
+- Collision and contact-force event delivery order should be treated as unspecified. Enable the required active-event flags, drain per tick, translate handles to stable IDs, normalize pair order, and sort before gameplay consumes events.
+- Hooks and filters must be pure or have checkpointed state and must execute identical logic on all peers.
+- A Rapier character controller is query-driven application logic, not replicated character state. Lock its offset, slope, autostep, snap-to-ground, filter, and impulse settings. Apply its computed movement at the same tick phase, normally through the next kinematic pose, and checkpoint application-owned state such as grounded timers. Canonicalize controller collision outputs before using them.
+- Creation/removal order, wake/sleep calls, random numbers, floating inputs, and iteration over maps or sets must be deterministic at the application layer.
+
+### Determinism validation matrix
+
+Run the same recorded input stream and scenario seed on at least:
+
+| Runtime | Architectures/environments |
+|---|---|
+| Rust native | Windows x86-64, Linux x86-64 |
+| Rust native | Linux or macOS ARM64 |
+| Same WASM artifact | Chrome and Firefox on x86-64 |
+| Same WASM artifact | Chrome and Safari/Chromium on ARM64 |
+
+For every target, test:
+
+- Multiple clean runs of the same binary.
+- An uninterrupted run.
+- Restore and replay from many checkpoint ticks.
+- Repeated restore from the same checkpoint.
+- Dense contacts and stacks, friction and restitution.
+- Sleeping and waking.
+- Add/remove/recreate stress that forces handle-slot reuse.
+- Joints, sensors, CCD, and collision groups.
+- Rays, shape casts, intersections, and deliberate equal-distance ties.
+- Character slopes, stairs, grounding, ceilings, and moving platforms.
+- Late inputs at several rollback depths.
+
+Compute a hash at every simulation tick, not only at the final frame. Build a canonical byte stream sorted by application ID and encode numeric values as fixed-endian raw `f32` bits. Include all gameplay-relevant public state:
+
+- Body type, pose, linear/angular velocity, sleep, enabled, and CCD state.
+- Collider pose, shape parameters, sensor/groups/material state.
+- Joint and entity lifecycle state.
+- Controller, RNG, and other application state.
+- Canonically sorted events and gameplay-affecting query/controller results.
+- Tick number and physics-configuration hash.
+
+Do not include Rapier handles in the portable hash. A local snapshot-byte hash can be useful diagnostically for the exact same build, but it is not a portable state format or compatibility guarantee.
+
+The pass condition is equality at every tick across all matrix targets and equality between uninterrupted and restore/replay runs. On failure, report the first divergent tick and per-entity field, not merely the final transform. Also test that an intentional input-bit change is detected and that version/build mismatches and old snapshots are rejected.
+
+Keep Rapier-specific build, stepping, snapshot, query, event, and controller boundaries in this work. Route broader timestep/solver/gameplay-physics architecture to the core physics-simulation workflow, and route input prediction, transport, acknowledgements, interpolation, reconciliation, and replication schemas to the core rollback/networking workflow.

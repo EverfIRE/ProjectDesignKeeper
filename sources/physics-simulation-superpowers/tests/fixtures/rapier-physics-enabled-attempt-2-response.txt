@@ -1,0 +1,102 @@
+Do not implement the design as written. It combines incompatible version domains, a nonexistent Rust feature, render-driven stepping, unsafe snapshot ownership, local handles as durable identity, and determinism claims Rapier does not make.
+
+## Binding, version, and build decision
+
+**Adapter policy:** Freeze one exact 3D/f32 domain per binding.
+
+- Rust server: pin `rapier3d` exactly to `0.35.3`, tag `v0.35.3`, commit `b82079ac41310a8af438af95b49b8fa551ce650f`. Lock `Cargo.lock`, target, compiler, enabled features, and artifact hash.
+- Browser: for cross-platform repeatability within JavaScript/WASM, pin `@dimforge/rapier3d-deterministic@0.20.0`, tag `js-v0.20.0`, commit `3e12c2679cb1940a876bde93af9cec0cf2f57944`. Lock the package tarball, WASM hash, package lock, browser/runtime, and initialization path.
+
+**Official fact:** Ordinary `@dimforge/rapier3d` is locally deterministic but has no cross-platform guarantee. The deterministic flavor’s guarantee assumes the same package, state, ordered inputs, and supported execution. `-simd` selects performance and requires WASM SIMD; `-compat` changes packaging, not determinism. Use a deterministic-compat flavor only when that packaging is needed.
+
+**Official fact:** Rust 0.35.3 has no `simd-stable` feature. Its default four-lane SIMD path has a scalar fallback. `simd8` and `enhanced-determinism` are compile-time incompatible. `parallel` is compatible with `enhanced-determinism`, but parity must still be measured on the deployment artifact, content, callbacks, target, and thread counts.
+
+**Adapter policy:** Use `enhanced-determinism` and `serde-serialize` on the Rust rollback build. Establish the reference build with `parallel` off; enable `parallel` only after off/on and thread-count parity passes. Treat `simd8` as a separate non-`enhanced-determinism` evidence domain.
+
+**Unavailable guarantee:** JavaScript 0.20.0 comes from the Rust 0.35.0/0.35.1 source era, not Rust 0.35.3. There is no official Rust/JavaScript API parity, bit-identical simulation, snapshot compatibility, or future-version compatibility. A deterministic JS package does not create a Rust-to-WASM lockstep guarantee.
+
+## Tick and input contract
+
+**Adapter policy:** Step every peer on a fixed simulation tick, such as a bit-locked `1/60`, with tick-numbered, canonically ordered input and lifecycle commands. Render frames may accumulate time and request zero or more whole ticks, but must not define simulation cadence. Keep integration parameters, callback behavior, content, controller phase, and replay-side-effect suppression fixed.
+
+Preserve exact input bits at every boundary:
+
+- Verify the final f32 bit pattern entering Rapier, not merely numerically similar JSON values.
+- Rust deterministic targets must obey strict IEEE-754-2008 behavior. Use nalgebra’s `ComplexField`/`RealField` operations instead of native transcendental functions in deterministic input generation.
+- JavaScript `Math.sin` and `Math.cos` are not cross-platform deterministic. Do not independently generate initialization or gameplay inputs with them on different browsers.
+- Prefer serialized, bit-locked inputs shared by every peer. Add a negative control using independently generated transcendental inputs and a separate one-bit mutation; the harness must detect the difference before stepping.
+
+**Unavailable guarantee:** Equal-looking decimal inputs, independently evaluated trigonometry, `enhanced-determinism`, or one matching final transform do not establish identical inputs or trajectories.
+
+## Snapshot, restore, and identity workflow
+
+1. **Checkpoint by fixed tick.** Keep a bounded rollback ring containing the Rapier checkpoint plus application-owned state, durable-ID mappings, lifecycle history, controller state, configuration hash, and tick. Restoring only the startup snapshot is a reset followed by replay, not a complete rollback design.
+
+2. **Rust checkpoints must be complete.** With `serde-serialize`, serialize a versioned owned bundle containing integration parameters and all relevant body, collider, joint, island, broad-phase, narrow-phase, and CCD state. Choose and lock the codec and envelope schema. Reconstruct stateless `PhysicsPipeline` and `QueryPipeline` objects after decoding.
+
+   **Adapter policy:** Transforms alone may be sufficient for visual replication, but they are insufficient for exact continuation: velocities, sleeping/enabled state, contacts, joints, CCD, colliders, and application state affect later ticks.
+
+3. **JavaScript restore replaces the owner.** Call `oldWorld.takeSnapshot()`. To restore, use the static `World.restoreSnapshot(bytes)`, which returns a new `World`; there is no in-place restore contract. At a tick boundary:
+
+   - stop stepping and ensure the old `EventQueue` is drained;
+   - invalidate every old body/collider wrapper, controller, query result, and handle mapping;
+   - restore and install the replacement `World`;
+   - rebuild wrappers, controllers, and durable-ID mappings from checkpointed application state;
+   - call `oldWorld.free()` only after no old view remains reachable;
+   - call `free()` on manually owned `EventQueue` instances.
+
+4. **Use application IDs on the network.**
+
+   **Official fact:** Rapier handles are local generational locators and may be reused after removal.
+
+   **Adapter policy:** Assign durable application/network IDs and maintain local `application ID ↔ body/collider handle` maps. Checkpoint those mappings, rebuild them after restore, and map event/query handles to application IDs while they are still valid. Never persist or transmit a Rapier handle as permanent identity.
+
+5. **Reject incompatible snapshots before decoding.** Every snapshot manifest must contain binding, dimension, precision, exact version, package flavor, artifact hash, feature set, schema, and codec.
+
+   **Unavailable guarantee:** Reject Rust-to-JavaScript snapshots, cross-version snapshots, flavor mismatches, and old snapshots after an upgrade. There is no supported migration merely because the structures appear similar.
+
+## Query, event, and character-controller boundaries
+
+- **Queries:** Rust’s current `QueryPipeline` is temporary: it borrows the broad phase and object sets, reuses the BVH updated during stepping, and observes end-of-last-step positions. Reconstruct it after restore. Do not use the pre-0.27 persistent-pipeline/manual-update model. JavaScript queries are `World` methods over that world’s current query structures. If host code changes poses outside a step, use only the selected binding’s documented propagation operation and test the exact observation point.
+
+- **Events:** Enable collider `ActiveEvents` deliberately. Drain `EventQueue` immediately after the declared step. Collision/contact-force data may be transient or substep-specific; map handles to durable IDs while valid, copy required fields, normalize pair order, canonicalize ordering, and consume the records. A later narrow-phase query cannot reconstruct every transient callback. Free the queue at teardown.
+
+- **Character controller:** `KinematicCharacterController` is a reusable, translation-only query controller. Immediately after `computeColliderMovement`, copy `computedMovement`, grounded state, `numComputedCollisions`, and every `computedCollision` needed by gameplay; those results describe the last computation and must be consumed before the next one. Recreate the controller after replacing a JavaScript world, and keep its configuration and tick phase fixed.
+
+## Determinism and hash validation matrix
+
+At every fixed tick compute:
+
+- a snapshot-byte hash, compared only inside a manifest-compatible binding/artifact/codec domain; and
+- a canonical semantic hash keyed by durable application IDs.
+
+The semantic projection should include lifecycle state, poses and velocities as exact bits, sleeping/enabled/CCD flags, collider and joint state, controller/application state, canonical events, gameplay-affecting query results, tick, and configuration hash. On mismatch, report the first divergent field rather than only the aggregate hash.
+
+| Validation row | Required configurations and comparison | Release criterion |
+|---|---|---|
+| Local repeatability | At least three fresh runs of every shipped artifact | Snapshot and semantic hashes match at every tick |
+| Rollback continuity | Uninterrupted run versus restore-and-continue at multiple ticks | Per-tick equality after restore, including add/remove and handle reuse |
+| Rust native targets | Exact Rust build on every supported OS/compiler for x86-64 and ARM64 under strict IEEE-754 | Per-tick equality is project evidence; record exact targets |
+| Rust parallelism | `parallel` off versus on with 1, 2, and deployment-maximum workers | Enable `parallel` only if exact application parity passes |
+| Browser WASM | Deterministic 0.20.0 in shipped Chromium, Firefox, and WebKit configurations across supported x86-64 and ARM64 devices | Per-tick equality within the deterministic-JS contract |
+| SIMD alternatives | Rust `simd8` and JavaScript `-simd` each tested as separate domains | Never infer parity with the deterministic baseline |
+| Rust versus JavaScript | Compare canonical semantic fields only; never compare snapshot bytes | Any equality is an **inference from measured evidence**, not an official guarantee |
+| Negative controls | Manifest mismatch, one-bit input mutation, independent sin/cos generation, reordered lifecycle command | Each fault must be rejected or produce an immediate identified divergence |
+| Stateful edge cases | Repeated restore, body/collider add-remove-reuse, callbacks, queries, controllers, shutdown/free ownership | No stale wrapper use, lost transient data, or unexplained hash divergence |
+| Memory | Restore cadence at and beyond the maximum supported session envelope | Meet the recorded WASM budget or use a fixed/patched artifact |
+
+Re-run relevant upstream snapshot roundtrip, portability, parallel-parity, and thread-count tests, but treat them only as seeds. One desktop run with one equal final transform cannot detect an earlier divergence, compensating errors, input-bit differences, restore discontinuity, or another target’s behavior.
+
+## Scope routes
+
+Keep this adapter review narrow:
+
+- fixed cadence and ownership → `architecting-real-time-physics`
+- authority, prediction, reconciliation, replay, and transport → `networked-deterministic-physics`
+- contact and CCD policy → `rigid-body-collision-contact`
+- joints → `constraints-ragdolls-active-physics`
+- movement behavior → `character-controller-movement`
+- reproduction and evidence harnesses → `debugging-testing-physics`
+- restore-memory budgets and scaling → `profiling-scaling-physics`
+
+The practical architecture is therefore authoritative reconciliation across Rust and JavaScript, with measured rollback repeatability inside each pinned binding domain—not assumed cross-binding bit-identical lockstep.

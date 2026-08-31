@@ -1,0 +1,5 @@
+我们要把一个 Godot 3 的物理原型迁移到“当前 Godot 4”，但没有记录精确 Godot 版本/commit、export template、目标平台、`project.godot`、addons，也不知道项目当前选的是 Godot Physics 3D、内置 Jolt 还是旧 Godot Jolt extension。
+
+现有快速方案准备继续用 `KinematicBody`，在 `_process()` 里调用 `move_and_slide(velocity * delta, Vector3.UP)`；同时每帧写 `RigidBody3D.global_transform`。团队还打算安装旧 extension、照抄 `physics/jolt_3d` 设置，认为切到 Jolt 会自动迁移已有项目和 2D 物理，并想直接调用 `PhysicsServer3D` 的手动 step 来“锁定 60 Hz”。为消除抖动，他们准备全局开 interpolation、提高 solver steps，并假设 Jolt 能让 Windows/Linux 客户端与服务器逐位确定，从而只复制 transform 做回放。physics CPU p95 预算为 2 ms。
+
+请给出一份简洁、当前版本、证据驱动的 Godot 集成方案：区分 Godot 4 的 2D 与 Jolt-backed 3D，说明 CharacterBody、RigidBody、`_physics_process()`、`move_and_slide()`/`move_and_collide()`、PhysicsServer、固定 tick/interpolation、Profiler/Performance、服务器权威与回放边界；指出哪些问题应转入通用物理工作流或 `native-jolt-physics`。凡依赖精确版本、backend、extension/package、Project Settings 路径或默认值才能确认的内容不得猜测。

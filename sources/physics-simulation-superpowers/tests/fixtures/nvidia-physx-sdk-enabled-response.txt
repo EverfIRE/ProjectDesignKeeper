@@ -1,0 +1,187 @@
+The current plan has several stop-ship assumptions: tracking `main`, carrying removed vehicle APIs forward, mutating an in-flight scene, variable-delta simulation, raw pointers as network identity, implicit GPU fallback, CPU execution of GPU-only features, cross-platform bit-identical rollback, durable binary collections, and treating a snippet plus one PVD capture as validation.
+
+## 1. Freeze the SDK and build contract
+
+Do not track `main`. Pin the native C++ SDK to:
+
+- Tag: `110.1-omni-and-physx-5.9.0`
+- Commit: `517a0073715120e114ee055b63b26c95e00d9039`
+- Release date: 2026-07-14
+- `version.txt`: `5.9.0.6d94eeb9`
+
+Record the exact checkout and submodules, compiler, CRT/STL, architecture, precision and floating-point flags, PhysX defines, checked/profile/release role, modules, patches, CUDA toolkit and driver, GPU architecture, and artifact hashes. The separate `ovphysx 0.5.10` artifact is a pre-1.0 wrapper, not native PhysX C++ 5.10.
+
+Build at least two explicit product configurations:
+
+- CPU authoritative configuration, used as the correctness oracle.
+- CUDA-enabled configuration, with separately declared supported features and failure behavior.
+
+## 2. Correct initialization and lifetime ownership
+
+Use an initialization state machine that records only completed stages:
+
+1. Create host allocator and error callbacks; they must outlive Foundation.
+2. Create and check Foundation.
+3. Create optional diagnostics/PVD transport and check each result.
+4. Create and check Physics.
+5. Call `PxInitExtensions` and retain whether it succeeded.
+6. Retain `PxCookingParams`; do not create or preserve a `PxCooking` singleton.
+7. Create and check the CPU dispatcher.
+8. If CUDA mode was requested, create and validate the CUDA context manager before creating scenes that use it.
+9. Construct `PxSceneDesc`, set the intended solver, broadphase, flags, dispatcher, filtering, callbacks, and optional CUDA manager explicitly; call `isValid()`.
+10. Create and check the scene, then create checked materials, geometry resources, shapes, actors, and joints with dependencies kept alive for all consumers.
+
+Current cooking uses `PxCook*` functions or immediate `PxCreate*` cooking functions with the required insertion callback. Key cooked-data caches by source geometry, all cooking parameters, SDK snapshot, platform, and build policy—not merely mesh names.
+
+For the pinned 5.9 headers, the scene defaults are PGS, ePABP, and PCM enabled. Set the choices explicitly rather than relying on either defaults or historical documentation that described TGS as default.
+
+Shutdown must:
+
+1. Stop new simulation and mutation submissions.
+2. Pair and drain any outstanding `fetchResults`.
+3. Detach listeners and drain host callback work.
+4. Release consumers before their dependencies.
+5. Release scenes before their dispatcher and CUDA manager.
+6. Call `PxCloseExtensions` only if extension initialization succeeded.
+7. Release Physics, diagnostics/transport, and finally Foundation.
+
+Reverse-unwind only successfully initialized stages. Add failure injection at every creation boundary.
+
+## 3. Use a strict 120 Hz step contract
+
+The server simulation should be driven by one accumulator with `dt = 1 / 120`, not by `renderDelta`:
+
+```cpp
+accumulator += elapsedTime;
+applyBacklogPolicy(accumulator);
+
+while (accumulator >= fixedDt) {
+    // Scene is idle here.
+    applyOrderedCommandsAndQueuedMutations();
+
+    scene->simulate(fixedDt);
+    scene->fetchResults(true); // exactly one fetch for this simulate
+
+    drainCopiedCallbackEvents();
+    captureAuthoritativeStateAndHash();
+
+    accumulator -= fixedDt;
+}
+
+renderInterpolationAlpha = accumulator / fixedDt;
+```
+
+An asynchronous fetch is permissible only if the host preserves an explicit `Idle -> Simulating -> Fetched` ownership barrier. While simulation is outstanding:
+
+- Do not add, remove, or mutate actors, shapes, joints, or scene state.
+- Do not begin another simulation.
+- Do not mutate from `onAdvance`; it overlaps simulation.
+- Copy bounded callback data and stable application IDs into a thread-safe queue, then process it after the fetch boundary.
+
+Respect one-writer/multiple-reader locking. A read lock cannot be upgraded to a write lock, and PhysX locks do not make host containers or object lifetimes safe.
+
+## 4. Replace raw pointers and define event/query contracts
+
+Use host-owned stable IDs, preferably with generation or tombstone validation, as network and callback identity. Keep the `PxActor*` mapping private and transient. Never serialize or transmit raw pointers.
+
+Replace the everything-collides filter with a tested layer/mask and notification matrix. Pair flags must separately express collision behavior and requested reports:
+
+- Contact-point data requires `eNOTIFY_CONTACT_POINTS`.
+- Touch found, persist, and lost notifications are separate choices.
+- Trigger-persist notification is unsupported.
+- Removed-actor or removed-shape flags mean reported pointers may already be invalid; do not dereference them.
+
+Treat active actors as fetch-boundary data. `getActiveActors()` can contain actors released after the preceding fetch. Consume the list immediately after `fetchResults` and before releases, or validate host tombstones without dereferencing the actor or its `userData`.
+
+A `PxQueryCache` may test its cached shape before filtering and can bypass prefilter/postfilter for that shape. Keep caches short-lived, invalidate them on removal or reuse, and validate the returned application identity. Never use a query cache as authorization or authority.
+
+## 5. Migrate vehicles, cooking, and removed features
+
+Since PhysX 5.7:
+
+- Vehicle headers are under `include/vehicle`.
+- The library is `PhysXVehicle`.
+- The `vehicle2` namespace is gone.
+- The deprecated vehicle API, including `PxVehicleDrive4W`, is removed.
+
+Port vehicles to the current component API. If the old implementation is needed as a reference, isolate PhysX 4.1 in a separate process and binary boundary; do not mix its types or libraries into native 5.9.
+
+PhysX 5.9 also removed particle cloth, particle rigids, `PxSoftBody`, `PxFEMSoftBody`, and deprecated FEM aliases. There is no standalone `MigrationTo59` guide; use the pinned changelog plus headers/source as the migration authority.
+
+## 6. Treat CPU, GPU, Direct GPU, and GPU-only features as different products
+
+Do not treat “GPU enabled” as one interchangeable mode:
+
+| Mode | Required product contract |
+|---|---|
+| Standard CPU | Correctness oracle; normal CPU rigid dynamics, queries, getters, and setters. |
+| Standard GPU dynamics | `eENABLE_GPU_DYNAMICS`; accelerates supported rigid-body stages with a valid CUDA manager. Unsupported work may remain CPU-side, so measure transfers and limits. |
+| GPU broadphase | `PxBroadPhaseType::eGPU`; independent of GPU dynamics and requires explicit capacity budgets. |
+| Direct GPU | Requires GPU dynamics, GPU broadphase, and sleeping disabled. |
+| GPU-only simulation | Feature-specific FEM/deformable, PBD-particle, and SDF APIs; no CPU-equivalent fallback contract. |
+
+Direct GPU is incompatible with vehicles, CCTs, CPU scene queries, CCD, triggers, contact modification, and origin shifting. CPU getters may be stale, and CPU setters are forbidden after initialization. Because this product needs vehicles, Direct GPU should not be enabled for that same feature contract.
+
+Deformable surfaces/volumes, FEM paths, PBD particles, and SDF collision must be treated as CUDA/GPU-only features. On CPU-only or non-CUDA targets, reject such content or substitute an explicitly designed application-level approximation; do not silently run it on CPU.
+
+Invalid CUDA context or driver, OOM, capacity overflow, device loss, and unsupported flag combinations must produce an explicit mode failure or a rebuild from authoritative application state. There is no automatic feature-equivalent fallback. Preflight these failures before mutating the live world where possible.
+
+## 7. Build rollback from application state
+
+`eENABLE_ENHANCED_DETERMINISM` is unsupported on GPU. On CPU it still does not guarantee bit identity across Windows/Linux, compilers, builds, SIMD/FP settings, thread schedules, or PhysX revisions. The same seed is insufficient.
+
+For server-authoritative rollback:
+
+- Store versioned host-owned snapshots and ordered commands/events at fixed-step boundaries.
+- Represent topology and object identity using stable application IDs.
+- Restore by rebuilding the same scene structure and applying captured application state.
+- Replay commands in a canonical order at exactly 120 Hz.
+- Hash application-visible state each step and compare it in replay tests.
+- Freeze build, platform, FP settings, worker configuration, PhysX snapshot, and content when testing reproducibility.
+- Use authoritative reconciliation rather than promising Windows/Linux bit-identical prediction.
+
+Keep the authoritative rollback path on the separately validated CPU configuration if deterministic replay is a requirement.
+
+## 8. Do not use PhysX binary collections as durable snapshots
+
+PhysX 5.6 removed deterministic binary serialization conversion, platform conversion, `PxSerialization::serializeCollectionToBinaryDeterministic`, and `PxBinaryConverter`. Binary collections are build/platform contracts, not durable cross-version saves or network snapshots.
+
+Create a versioned application-level network/save format containing stable IDs, descriptors, authoritative state, and ordered inputs. Rebuild PhysX objects from it.
+
+If binary collections are retained for tightly controlled same-build loading:
+
+- `PxCollection` is non-owning; releasing it does not release contained objects.
+- In-place deserialization requires 128-byte-aligned backing memory.
+- Keep that memory alive, aligned, unmoved, and owned until every in-place object is released.
+- Track collection, contained objects, external references, insertion callback, and backing storage as distinct lifetimes.
+
+## 9. Use PVD and OmniPVD for observability, not state
+
+PVD is a live transport. OmniPVD records an OVD stream/file for later inspection. Enable the required scene flags/channels and attach build, source, platform, step, and configuration metadata.
+
+Neither PVD nor OmniPVD is persistence, rollback state, or performance proof. Capture representative normal runs, rollback divergences, filtering failures, GPU capacity failures, and long-soak failures—not just one happy-path capture.
+
+## 10. Replace the proposed release check with a validation ladder
+
+`SnippetHelloWorld` is a smoke test only. The public 5.9 tree provides snippets as reference seeds and has no auditable public SDK unit-test or benchmark target.
+
+Release validation should include:
+
+- Exact selected snippets in checked and shipping configurations.
+- Initialization failure injection and reverse-unwind tests.
+- Lifecycle and final-fetch tests.
+- Filter-matrix and requested-event tests.
+- Callback concurrency, `onAdvance`, removal, and stale active-actor tests.
+- Query-cache invalidation and filter-bypass tests.
+- Fixed-step replay, ordering, rollback, and hash tests.
+- Serialization ownership, alignment, and lifetime tests.
+- CPU correctness-oracle comparisons.
+- CUDA initialization, capacity overflow, OOM, unsupported-mode, and device-loss tests.
+- Direct GPU incompatibility denial tests.
+- Windows 10+ and shipped Ubuntu 22.04/24.04 CPU coverage.
+- For GPU builds, a pinned CUDA 12.8 baseline, Volta-or-newer deployed hardware, and pinned drivers.
+- Checked diagnostics, ASan/UBSan where applicable, Nsight, and Compute Sanitizer.
+- PVD and OmniPVD captures with reproducible metadata.
+- Long soak tests and target-scene p50/p95/p99 timing and capacity evidence.
+
+Ship only after both CPU and each advertised CUDA configuration pass their own contract. A successful snippet, one capture, or an implicit fallback path is not a release gate.

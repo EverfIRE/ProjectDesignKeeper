@@ -1,0 +1,4 @@
+.worktrees/
+/artifacts/
+/sources/*/.package/
+/sources/physics-simulation-superpowers/outputs/

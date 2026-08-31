@@ -1,0 +1,398 @@
+# Survey protocol
+
+Freeze the protocol before searching and assign it an immutable ID such as `RTGP-SURVEY-2026-08-30-v1.0`.
+
+## 1. Scope
+
+Eligible works must satisfy all of the following:
+
+1. Publicly available on or before **2026-08-30**.
+2. Present a method, system, evaluation, or transferable technique relevant to at least one scope area:
+   - contact/collision response;
+   - constraint solving;
+   - character–world interaction;
+   - deformable solids, cloth, rods, or soft bodies;
+   - fracture, cutting, or damage;
+   - particles, granular materials, or fluids;
+   - CPU/GPU parallel simulation;
+   - differentiable simulation;
+   - robotics or graphics methods with a concrete game-physics transfer path.
+3. Contain enough technical content to identify the contribution. A teaser, product page, video, or abstract may discover a work but cannot by itself establish method or readiness claims.
+4. Either report interactive execution or describe a concrete mechanism that could plausibly transfer to an interactive CPU/GPU implementation.
+
+Exclude conventional offline CAE, molecular dynamics, and scientific CFD unless the inspected work identifies a specific transfer path, such as reduced-order dynamics, bounded local solves, coarse interactive discretization, asynchronous coupling, learned surrogates, or explicitly interactive GPU execution.
+
+“Production ready” is not an inclusion category. Record narrower observations such as “authors report 8 ms on the stated scene and hardware” or “an author repository exists, but it was not built.”
+
+## 2. Search workflow
+
+### A. Freeze the search matrix
+
+Cross each scope area with these method and execution terms:
+
+- Methods: impulse, complementarity, projected iterative solver, position-based dynamics, extended position-based dynamics, nonsmooth dynamics, finite element, material point method, SPH, PIC/FLIP, reduced order, neural surrogate, differentiable simulator.
+- Execution: real-time, interactive, GPU, parallel, game, engine, stable, robust, performance.
+- Evidence: implementation, source code, repository, supplement, benchmark, dataset, project page.
+
+Save every source-specific query verbatim. Newly discovered terminology may be added only through a dated protocol amendment; the original queries remain in the log.
+
+### B. Search source tiers in order
+
+1. **Primary scholarly records**
+   - Venue and publisher digital libraries.
+   - DOI landing pages and bibliographic registries.
+   - Institutional thesis and technical-report repositories.
+   - Preprint servers.
+
+2. **Author-controlled sources**
+   - Author or laboratory publication pages.
+   - Institutional project pages.
+   - Repositories explicitly linked by the authors or paper.
+   - Author-provided PDFs, supplements, data, and videos.
+
+3. **Discovery and citation indexes**
+   - Use for forward citations, related-work discovery, and identifier reconciliation.
+   - Do not use index snippets as evidence for technical or performance claims.
+
+4. **General web discovery**
+   - Use only to locate a primary record or author-controlled artifact.
+   - Product pages, blogs, mirrors, forks, and videos remain separate supporting records.
+
+For each source, exhaust the documented result window or record the actual pagination/API limit. Never silently treat the first page as a complete search.
+
+### C. Ingest before screening
+
+Every result receives a permanent `candidate_id`, including obvious duplicates and likely exclusions. Preserve the raw title, URL, source, query, rank, and discovery time before normalization.
+
+Normalize:
+
+- DOI to lowercase bare form, without `https://doi.org/`;
+- arXiv identifier separately from version suffix;
+- repository host, owner, and repository name;
+- Unicode, whitespace, punctuation, and title casing for matching only;
+- author names without discarding the source spelling.
+
+Normalization must not overwrite verbatim metadata.
+
+### D. Resolve identity
+
+Use three levels:
+
+1. **Canonical work**: the intellectual contribution family.
+2. **Publication**: a preprint, conference paper, journal extension, thesis chapter, report, or corrigendum.
+3. **Artifact**: project page, code, dataset, supplement, video, executable, or third-party reproduction.
+
+DOIs with different URL forms are one identifier. Preprint revisions are publications within one work. A conference paper and later journal extension can share a `work_id` while retaining different `publication_id` values and an `extends` relationship. If two publications make materially independent primary contributions, retain separate work identities and link them with `extends` or `derived_from`.
+
+Title similarity alone is insufficient to merge records. Confirm identity using identifiers, authorship, contribution lineage, explicit version statements, or overlapping technical content. Ambiguous cases remain separate with `possible_same_as` until resolved.
+
+A repository is “author-controlled” only when authorship/ownership or an inspected paper/project link establishes that relationship. A fork, mirror, package port, or third-party reimplementation is a separate artifact.
+
+### E. Screen in two passes
+
+Two reviewers independently record each decision.
+
+1. **Title/abstract pass**
+   - `advance`
+   - `exclude`
+   - `uncertain`
+
+2. **Full-text pass**
+   - `include_core`
+   - `include_transfer`
+   - `background_only`
+   - `exclude`
+   - `unresolved`
+
+Disagreements are resolved by a third reviewer or a recorded consensus event. Do not replace the original votes.
+
+Controlled exclusion reasons:
+
+- `OUT_OF_DOMAIN`
+- `NO_CONCRETE_GAME_TRANSFER_PATH`
+- `OFFLINE_ONLY`
+- `INSUFFICIENT_TECHNICAL_CONTENT`
+- `NON_RESEARCH_ITEM`
+- `ABSTRACT_OR_TEASER_ONLY`
+- `FULL_TEXT_UNAVAILABLE`
+- `SUPERSEDED_VERSION`
+- `DUPLICATE_DISCOVERY`
+- `LANGUAGE_OR_ACCESS_LIMIT`
+- `DATE_AFTER_CUTOFF`
+- `OTHER_RECORDED_REASON`
+
+`DUPLICATE_DISCOVERY` and `SUPERSEDED_VERSION` preserve links to the retained work; they do not delete records.
+
+### F. Snowball citations
+
+For every included core or transfer work:
+
+- Extract all backward references from the inspected full text.
+- Retrieve forward citations from the selected citation indexes with retrieval dates.
+- Record which citations were already known, newly screened, inaccessible, or outside scope.
+- Repeat backward/forward screening in rounds.
+- Flag recent works whose forward-citation coverage is likely immature; do not interpret low citation counts as low importance.
+
+### G. Extract evidence
+
+Every substantive statement in the final map must point to an inspected source location: page, section, equation, table, figure, appendix, repository file, release, or commit.
+
+Performance evidence must retain:
+
+- author-reported versus independently observed status;
+- hardware and software environment;
+- workload and scene complexity;
+- object/particle/element counts;
+- timestep, iterations, precision, and batch size where available;
+- metric, value, unit, and variance;
+- comparison baseline and configuration.
+
+Absent details are `unknown`, not inferred.
+
+## 3. Exact output contract
+
+Release these UTF-8 tables plus a human-readable report and manifest.
+
+```text
+protocol.yaml
+query_log.csv
+candidates.csv
+works.csv
+publications.csv
+work_relations.csv
+artifacts.csv
+screening_events.csv
+citation_edges.csv
+evidence_claims.csv
+execution_runs.csv
+stage_gates.csv
+change_log.csv
+snapshot_manifest.json
+report.md
+```
+
+### `protocol.yaml`
+
+```yaml
+protocol_id: string
+protocol_version: semver
+cutoff_date: YYYY-MM-DD
+scope_inclusions: [string]
+scope_exclusions: [string]
+source_tiers: [string]
+query_vocabulary_version: string
+screening_rules_version: string
+stop_rule_version: string
+resource_cap_person_hours: 160
+resource_cap_unique_works: 2500
+created_at: ISO-8601
+reviewers: [reviewer_id]
+```
+
+### Normalized tables
+
+| Table | Required fields |
+|---|---|
+| `query_log` | `search_run_id`, `protocol_id`, `source_name`, `source_tier`, `source_url`, `query_verbatim`, `filters_verbatim`, `sort_order`, `executed_at`, `result_count_reported`, `records_captured`, `pages_examined`, `coverage_limit`, `operator`, `error_or_note` |
+| `candidates` | `candidate_id`, `search_run_id`, `discovery_type`, `discovered_from_id`, `raw_title`, `raw_authors`, `raw_date`, `raw_url`, `raw_identifier`, `source_rank`, `captured_at`, `resolution_status`, `resolved_work_id`, `resolved_publication_id` |
+| `works` | `work_id`, `canonical_title`, `canonical_author_list`, `first_public_date`, `contribution_classes`, `scope_areas`, `canonical_publication_id`, `current_decision`, `decision_reason_code`, `decision_reason_text` |
+| `publications` | `publication_id`, `work_id`, `title_verbatim`, `authors_verbatim`, `publication_type`, `venue`, `date`, `doi`, `arxiv_id`, `other_identifier`, `primary_url`, `review_status`, `review_status_basis`, `relation_to_canonical`, `full_text_access`, `full_text_inspected_at` |
+| `work_relations` | `relation_id`, `from_work_or_publication_id`, `relation_type`, `to_work_or_publication_id`, `evidence_source_id`, `note` |
+| `artifacts` | `artifact_id`, `work_id`, `publication_id`, `artifact_kind`, `url`, `host`, `owner`, `provenance_class`, `paper_or_project_linked`, `revision_or_commit`, `access_status`, `license_status`, `license_expression`, `license_scope`, `license_source_location`, `checked_at` |
+| `screening_events` | `screening_event_id`, `candidate_id`, `work_id`, `publication_id`, `pass`, `reviewer_id`, `decision`, `reason_code`, `reason_text`, `evidence_source_id`, `recorded_at`, `supersedes_event_id` |
+| `citation_edges` | `citation_edge_id`, `citing_publication_id`, `cited_raw_reference`, `resolved_cited_publication_id`, `direction`, `discovery_round`, `source`, `retrieved_at`, `screening_status` |
+| `evidence_claims` | `claim_id`, `work_id`, `publication_id`, `artifact_id`, `claim_class`, `bounded_claim_text`, `claim_status`, `source_id`, `source_locator`, `inspection_depth`, `evaluation_kind`, `evaluation_reporting`, `independence`, `limitations`, `extractor`, `verified_by` |
+| `execution_runs` | `run_id`, `artifact_id`, `revision_or_commit`, `environment`, `command_or_procedure_ref`, `started_at`, `ended_at`, `outcome`, `logs_path`, `results_path`, `deviations`, `operator` |
+| `stage_gates` | `gate_event_id`, `work_id`, `target_stage`, `gate_status`, `criteria_met`, `criteria_missing`, `approved_by`, `recorded_at`, `supersedes_event_id` |
+| `change_log` | `change_id`, `release_id`, `change_type`, `record_type`, `record_id`, `old_value_ref`, `new_value_ref`, `reason`, `author`, `timestamp`, `scope_effect` |
+
+### Controlled classifications
+
+`contribution_classes` is multi-valued:
+
+```text
+CONTACT_COLLISION
+CONSTRAINT_SOLVER
+RIGID_BODY
+CHARACTER_INTERACTION
+DEFORMABLE_SOLIDS
+CLOTH_RODS_SHELLS
+FRACTURE_DAMAGE_CUTTING
+PARTICLES_GRANULAR
+FLUIDS
+GPU_PARALLELISM
+DIFFERENTIABLE_SIMULATION
+ROBOTICS_TRANSFER
+GRAPHICS_TRANSFER
+REDUCED_ORDER_OR_SURROGATE
+BENCHMARK_EVALUATION
+SYSTEM_OR_ENGINE
+```
+
+`review_status`:
+
+```text
+PEER_REVIEWED_ARCHIVAL
+PEER_REVIEWED_WORKSHOP
+NON_PEER_REVIEWED_PREPRINT
+THESIS
+TECHNICAL_REPORT
+WORKSHOP_ABSTRACT
+EDITORIAL_OR_OVERVIEW
+UNKNOWN
+```
+
+Review status must have a verification basis. Venue reputation is not evidence of review status.
+
+`provenance_class`:
+
+```text
+AUTHOR_CONTROLLED
+INSTITUTION_CONTROLLED
+PUBLISHER_OR_VENUE
+OFFICIAL_COLLABORATOR
+THIRD_PARTY_REIMPLEMENTATION
+FORK
+MIRROR
+UNKNOWN
+```
+
+`license_status`:
+
+```text
+VERIFIED
+CONFLICTING
+NO_LICENSE_FOUND
+LINK_ONLY
+UNKNOWN
+```
+
+A public repository with no license is not recorded as open source. License observations are tied to a commit or retrieval date and separately cover code, data, models, and assets.
+
+`claim_status`:
+
+```text
+DIRECTLY_REPORTED
+DERIVED_FROM_REPORTED_VALUES
+INFERRED_WITH_RATIONALE
+INDEPENDENTLY_OBSERVED
+CONTRADICTED
+UNKNOWN
+```
+
+`inspection_depth`:
+
+```text
+METADATA_ONLY
+ABSTRACT_ONLY
+FULL_TEXT
+SUPPLEMENT_INSPECTED
+ARTIFACT_STATIC_INSPECTION
+ARTIFACT_EXECUTED
+```
+
+Only an `execution_runs` record with logs can support `ARTIFACT_EXECUTED` or “ran successfully.”
+
+### Relevance contract
+
+Record relevance as structured evidence, not a single prestige-weighted score:
+
+```text
+scope_role:
+  CORE | TRANSFER | BACKGROUND | OUT_OF_SCOPE
+
+interactive_evidence:
+  INDEPENDENTLY_MEASURED
+  AUTHOR_REPORTED_REAL_TIME
+  AUTHOR_REPORTED_INTERACTIVE
+  CONCRETE_BOUNDED_TRANSFER_PATH
+  QUALITATIVE_TRANSFER_ONLY
+  NOT_INTERACTIVE
+  UNKNOWN
+
+game_transfer_path:
+  target_game_subsystem
+  transferable_mechanism
+  required_simplifications
+  expected_bottleneck
+  missing_evidence
+  source_locator
+```
+
+### Validation invariants
+
+- Every candidate belongs to a logged discovery event.
+- Every resolved candidate points to a work and, when identifiable, a publication.
+- Every publication belongs to exactly one work.
+- Every final decision has a screening event and reason.
+- Every exclusion remains in the released data.
+- Every technical or performance claim has an inspected source and locator.
+- Every artifact has provenance and license status.
+- No work count is inflated by publications or artifacts.
+- Blank values are prohibited for required fields; use `UNKNOWN` plus an explanation.
+- Historical screening and gate events are append-only.
+- The snapshot manifest contains file hashes, row counts, protocol hash, cutoff date, and release time.
+
+## 4. Evidence-quality reporting
+
+Do not collapse evidence into one score. Report these independent dimensions:
+
+- source authority;
+- inspection depth;
+- evaluation type;
+- reporting completeness;
+- artifact provenance;
+- artifact availability;
+- license clarity;
+- independent verification;
+- transfer specificity.
+
+A prestigious peer-reviewed paper may still have weak artifact or performance evidence. A preprint may have strong code and evaluation evidence while retaining non-peer-reviewed status. The report must show both facts without substituting one for the other.
+
+## 5. Stop rule
+
+Search completeness and resource exhaustion are different outcomes.
+
+Declare a scope area saturated only after:
+
+1. All frozen query blocks have run across every mandatory source tier.
+2. Every included core and transfer publication has completed backward and forward citation screening.
+3. Two consecutive complete snowball rounds in that scope area each produce:
+   - no new contribution class; and
+   - no more than one newly included work; and
+   - an inclusion yield below 2% of newly screened unique works.
+4. All unresolved identity conflicts affecting inclusion counts have been adjudicated.
+
+Stop the entire survey when every scope area satisfies that rule.
+
+Also stop at the preregistered cap of **160 person-hours or 2,500 unique canonical works**, whichever occurs first. If the cap is reached before saturation, label the release `RESOURCE_LIMITED`, publish the unscreened and unresolved queues, and identify the incomplete scope areas. Changing the cap requires a protocol amendment; it cannot be used retroactively to claim saturation.
+
+## 6. Advancement into later work
+
+A work progresses through explicit gates:
+
+| Stage | Minimum gate |
+|---|---|
+| Structured paper review | `include_core` or `include_transfer`; canonical identity resolved; full text inspected; claims have source anchors |
+| Experiment design | target claim and observable metric defined; workload, baseline, and acceptance criterion specified; missing parameters listed |
+| Reproduction | exact publication and artifact revision selected; license permits intended use or a clean-room path is documented; environment and run plan frozen |
+| Game-transfer prototype | transferable mechanism mapped to a game subsystem; interactive budget and degradation strategy defined; reproduction evidence and remaining gaps disclosed |
+
+Artifact availability is not mandatory for paper review. A work without code may enter reproduction as a clean-room reimplementation, but that distinction must remain visible. A failed build is evidence, not grounds for silently dropping the work.
+
+Unknowns travel forward with the record, including unavailable full text, missing hardware details, ambiguous review status, unspecified parameters, unclear artifact ownership, missing licenses, absent baselines, and unverified performance.
+
+## 7. Updating the survey
+
+Publish an immutable snapshot such as `survey-2026-08-30-v1.0`. For an update:
+
+1. Copy the prior protocol and preserve its hash.
+2. Advance the cutoff date.
+3. Rerun saved queries and record new search runs.
+4. Refresh forward citations and artifact states with new timestamps.
+5. Deduplicate against all historical identifiers and fingerprints.
+6. Append decisions and corrections; never overwrite historical events.
+7. Recompute current views from the latest valid events.
+8. Publish a change log and a list of records whose decisions changed.
+
+Corrections that do not change scope increment the patch version. Search-method changes increment the minor version. Domain, eligibility, or evidence-rule changes require a major version and a documented rescreening plan. This prevents a later researcher from silently widening the survey, changing the meaning of “included,” or counting an existing work again through a new URL or publication version.

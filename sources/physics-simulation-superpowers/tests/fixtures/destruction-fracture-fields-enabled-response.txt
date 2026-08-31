@@ -1,0 +1,79 @@
+## Destruction contract
+
+服务器是唯一的 gameplay destruction authority：只有服务器可以改变支撑、损伤、断裂拓扑、释放刚体及运行时二次断裂。**服务器 PHYSICS 以 60 Hz 固定 tick 推进；网络复制不以 60 Hz 流式同步全部碎块 transform。** 客户端渲染使用插值与校正，不能自行生成权威 fracture 真相。
+
+先冻结以下物理契约：
+
+- 声明 world 坐标系、重力方向与大小、长度/质量/时间单位和资产缩放；为完整建筑、簇和 gameplay 碎块定义材料密度、质量、质心、惯量及缩放规则。
+- 给资产、静态簇、碎块、bond、support、事件和运行时生成子块稳定 ID。事件携带权威 tick、父 ID、参数、seed 和全局顺序；重复事件幂等处理，乱序事件缓存或恢复，客户端不得按到达顺序自行推断拓扑。
+- 使用 hybrid destruction：约 3000 个预切块构成 canonical rest topology 和层级簇；完整阶段以少量粗簇承载。只有满足已声明材料损伤/应变/疲劳规则的区域，才由服务器授权运行时二次断裂；细小视觉碎裂与尘土留在客户端 cosmetic 层。
+- 建立明确的 anchored/world supports、承重关系、bond 强度、材料 damage/strain/fatigue、阈值及 hysteresis。删除承重墙时只移除对应 support/bond，然后重算 connectivity 和 islands：与世界支撑失联的连通分量释放，仍有有效支撑的分量保持约束。禁止“一删墙整楼无条件激活”和依靠睡眠偶然悬空。
+- 场必须声明 shape、坐标 frame、falloff、channel、magnitude、duration 和应用顺序；径向冲击、方向冲击、damage、strain 等逐通道验证。以空间候选过滤和预算准入处理重叠场，记录组合顺序、冲量、work 与 damage，禁止扫描全部碎块的无界全局循环。
+- 每次 fracture/recluster 是原子事务：先检查 piece/cluster/contact/query/field/tear-event/active-body 等容量，再在 canonical order 中建立稳定子 ID、断开 bonds、更新 support/connectivity、失效相关缓存并创建碰撞体；核对总质量、质心、惯量、线动量、角动量、场做功、分离冲量、断裂耗散和总能量。全部校验通过才 commit；出现部分拓扑、重复 ID、非有限值、无法解释的能量增长或初始重叠失控时整笔 rollback。
+- checkpoint 保存权威拓扑、support/bond 状态、damage/strain/fatigue、gameplay bodies、稳定 ID 映射、事件序号和可恢复状态，供断线恢复、join-in-progress 与 replay 使用。
+
+当前建议不能构成方案：降低 solver iterations 可能扩大穿透和能量误差；GPU fracture 若不能产生与权威顺序一致的 canonical topology，只能用于候选生成或 cosmetic 工作；继续复制所有碎块会维持带宽问题；统一 3 秒 lifetime 会错误删除仍影响玩法的碎块，也会无谓保留无关碎屑。这些只能在已声明误差和预算内作为可测实现选项，不能替代架构。
+
+## Staged build and diagnosis
+
+按以下顺序建设和诊断，每阶段都保留可回放检查点：
+
+1. 固定一个服务器 gameplay authority 和 60 Hz physics fixed tick，客户端先仅消费权威事件。
+2. 仅用完整建筑和静态 support graph，验证单位、重力、质量、COM、惯量、碰撞代理；单独删除一个 support，核对 connectivity/island 重算。
+3. 加入预切层级簇和 bonds，但关闭运行时二次断裂；验证逐步损伤、局部释放及渐进倒塌顺序。
+4. 每次只允许一次服务器授权的 runtime fracture，验证稳定子 ID、canonical topology、缓存失效和原子 rollback。
+5. 碰撞从粗簇逐步细化到有界 gameplay fragments。完整/远处/睡眠对象使用粗代理；只为确需命中的 gameplay 碎块保留适当凸代理。声明碰撞过滤、fragment-fragment 策略、CCD 适用对象、初始重叠处理，并限制 contacts、manifolds、islands 和活跃 bodies。
+6. 一次加入一个 field channel，再测试方向场、径向场和重叠场的候选、顺序、冲量、work 与 damage。
+7. 加入 replication tiers 和 debris lifecycle：`gameplay → sleeping → pooled/despawned`；cosmetic debris 与 dust/VFX 本地生成，不参与 damage、blocking 或 scoring。LOD 依据相关性、可见性和预算，带 hysteresis；对象进入 pool 时清理接触、约束和事件状态，恢复时校验稳定映射。
+8. 用已声明的最大并发爆炸构造最坏爆炸链，分别剖析 support/connectivity、fracture、碰撞、接触、字段、生命周期、序列化和 checkpoint 成本，直到服务器 physics CPU p95 不超过 3 ms。
+
+降低 p95 的核心是减少同时进入窄相位、求解器和权威复制的自由度：完整建筑保持簇化，支撑失联才激活；二次断裂先准入再执行；远处和低价值内容保持 coarse cluster/proxy 或转 cosmetic；睡眠对象退出活跃接触；尘土不使用刚体。降低 iterations 或搬到 GPU 只能在这些结构性约束之后单独 A/B 验证。
+
+## Authority, budgets, and degradation
+
+网络复制 fracture/damage/release 的权威 tick、稳定 ID、参数、seed、顺序及必要 checkpoint；gameplay body 只按已声明的复制与校正契约发送状态。**即使服务器 PHYSICS 固定为 60 Hz，也不得按 60 Hz 广播约 3000 块及其二次碎块的全部 transform。** Cosmetic debris 在各客户端本地生成，可以视觉不同，但不能改变碰撞、伤害、遮挡判定、计分或支撑真相。
+
+目前以下缺失项是调优和验收 blocker：
+
+- 网络带宽与事件/状态预算、内存预算；
+- 必须保留的 gameplay 破坏尺度及 gameplay/cosmetic 分界；
+- 可见距离、相关性和 LOD 规则；
+- 最大并发爆炸及最坏链定义；
+- 各材料的 bond、damage、strain、fatigue、断裂阈值与 hysteresis；
+- 允许的代理误差、穿透、CCD 漏检和接触误差；
+- 复制延迟、丢包/乱序恢复以及客户端校正容差；
+- piece、cluster、contact、query、field candidate、tear-event、active-body 的有限 caps。
+
+这些数值必须由项目声明，不能从“3000 块”“60 FPS”或 3 ms 目标反推。没有它们，只能验证架构，不能声称最坏情况下达标。
+
+所有 mutation 必须先做预算准入并显式记录 cap hit。超预算时采用可逆降级：保持更粗的 cluster/proxy、限制或延后二次断裂、将额外细节转为 VFX、让无关对象 sleep/pool、缩小 field 候选集。降级不得破坏 support、gameplay collision、damage、权威事件顺序或 checkpoint 可恢复性，也不得静默丢弃已接受的权威事件。Debris lifetime 由 gameplay relevance、visibility 和预算驱动，不采用统一永久存活，也不采用统一 3 秒删除。
+
+## Acceptance
+
+首先用完全相同的资产、seed、输入、事件顺序和最坏并发条件做 A/B：
+
+- A：当前客户端/服务器各自 fracture、所有碎块 60 Hz transform 同步、所有高精度碎块和刚体尘土永久参与接触，并加入团队建议的降低 solver iterations、GPU fracture 和统一 3 秒 debris lifetime。
+- B：上述分阶段服务器权威事件架构、gameplay/cosmetic 分区、层级簇、support/connectivity 重算、预算准入、碰撞分层、生命周期和 checkpoint 恢复。
+
+覆盖单支撑删除、阈值以下/以上损伤、同 tick 有序命中、渐进倒塌、运行时二次断裂、重叠方向/径向场、最坏并发爆炸链、近/远观察者、join-in-progress/checkpoint，以及网络延迟、丢包和乱序。
+
+每次运行都保存足以定位首个错误 tick 的证据：
+
+- support、bond、connectivity、island 状态及其变化；
+- damage、strain、fatigue；
+- duplicate/out-of-order 事件和 first replay-divergence tick；
+- topology、cluster、piece 数量及 stable-ID errors；
+- 质量、COM、惯量、线/角动量、能量、场 work、断裂耗散和分离冲量；
+- collision proxy error、penetration、CCD 结果；
+- contacts、manifolds、islands 及全部 cap hits；
+- 分开的 active、sleep、pool、despawn 数量及状态转换；
+- field candidates、应用顺序、impulse、work 和 damage；
+- 客户端 correction error 与 correction delay；
+- bytes/event、总 bandwidth、checkpoint 大小和 memory；
+- 服务器 physics CPU p50、p95、p99，并拆分 fracture、support、collision/contact、solver、field、lifecycle 和 replication preparation。
+
+验收判定必须分开：
+
+- **Accept**：已声明且有限的 gameplay、视觉、碰撞、回放、网络和内存容差全部满足；延迟/丢包/乱序后能按序恢复；最坏爆炸链的服务器 physics CPU p95 ≤ 3 ms。
+- **Reject**：出现非致命容差超限、普通 cap hit、带宽或内存超预算、校正超限、视觉/碰撞误差超限；记录后拒绝该配置，不把它当作成功。
+- **Fatal stop and rollback**：任何非有限状态、损坏或重复的 topology/ID、持续增长的 penetration/energy、不一致 support、非服务器授权真相、静默 cap 丢失、不可恢复 divergence，或最坏链 CPU p95 超过 3 ms。

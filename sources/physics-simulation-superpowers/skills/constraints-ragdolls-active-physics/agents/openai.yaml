@@ -1,0 +1,6 @@
+interface:
+  display_name: "Constraints, Ragdolls & Active Physics"
+  short_description: "Stabilize active ragdolls with staged evidence"
+  default_prompt: "Use $constraints-ragdolls-active-physics to diagnose an unstable active ragdoll."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,108 @@
+## Transfer decision
+
+**结论：当前对“把论文的 Python/CUDA optimizer 直接放入 authoritative tick”作 no-go；对“离线 teacher 生成一个有界、可独立验证的 runtime artifact”作有条件 prototype-go。** 客户端预计算 transform 并同步给服务器的方案同样是 no-go：客户端只能发送输入意图，服务器必须计算并拥有 gameplay state。减少反向优化迭代次数不是预算方案，因为其时延、稳定性和质量退化均未被测量。
+
+**冻结的 claim ledger**
+
+| 字段 | 记录与证据标签 |
+|---|---|
+| 来源与锚点 | [unknown] 论文版本、标题、commit/DOI、页码、图表/实验编号尚未提供；在补齐前不能审计原始 claim。 |
+| 工作负载 | [fact] 单个软体对象；10 秒固定轨迹；离线优化。交互输入、复杂碰撞和联网均不在验证域内。 |
+| 输入、时间步和基线 | [fact] 基线是手调控制器。[unknown] 输入特征、轨迹分布、仿真时间步、接触设置、baseline 参数与调参预算。 |
+| 指标与论文结果 | [fact] tracking RMSE；相对手调控制器降低 35%。该数值只保留为上述离线工作负载中的报告结果。 |
+| 复现 | [fact] 在一张不同 GPU 上得到 28%±4% 的降低，状态为 `partial`。[unknown] “±4%”的统计定义、样本数、种子、置信区间、软件栈及与论文设置的偏差。不得把 partial 复现提升为完整复现。 |
+| 成本 | [fact] 每 1 秒轨迹约需 45 秒计算、200 次 reverse-mode 优化迭代、12 GB GPU 显存；因此 10 秒轨迹的线性外推约为 450 秒只是 [derived hypothesis]，未被实测，不能当事实。 |
+| 未被支持的扩展结论 | [fact] 没有证据证明 20 个交互对象、碰撞丰富场景、在线推理、60 FPS、确定性、服务器权威、网络同步或玩家价值。也没有证据说明“少跑几次迭代”仍保持质量和稳定性。 |
+
+**三个互不替代的判定**
+
+| 判定通道 | 当前 verdict | 依据、缺口与下一测试 |
+|---|---|---|
+| scientific validity | `partial` | [fact] 论文报告 35%，异构 GPU 上的复现为 28%±4% 且标记 partial。[unknown] 缺来源锚点、统计定义、配置偏差、消融和敏感性证据。下一步是锁定论文/代码/环境，重跑固定种子并解释 35% 与 28%±4% 的差异。目测“更软”无效。 |
+| implementation feasibility | 直接 optimizer 为 `unsupported`；离线 teacher → 有界 runtime artifact 为 `unknown` | [fact] 已知成本与 60 FPS/权威服务器目标不相容，且 12 GB 远超新增常驻内存上限；更少迭代无质量或最坏时延证据。下一步仅允许 Gate 1 的单对象学生工件测试。build 或 demo 成功不算可行性证据。 |
+| product value | `unknown` | [fact] tracking RMSE 不是玩家价值指标；没有随机化实验、最小有意义效应或体验 guardrail。下一步是在 Gate 3 预注册 A/B；工程门禁通过不能继承为产品价值。 |
+
+**不可迁移的结论。** 不迁移 35% 或 28%±4% 到 Chaos、碰撞丰富场景、20 对象、在线 runtime 或玩家偏好；不把一张不同 GPU 的结果迁移到目标服务器硬件；不把固定轨迹迁移到玩家输入；不把 forward 视觉合理性当作梯度、接触或确定性正确；不把 Python/CUDA 能运行、默认参数、单机 demo 或平均时延当作 production evidence。
+
+## Approximation and implementation slice
+
+**teacher/student 边界。** [decision] Python/CUDA reverse-mode optimizer 只可在离线、可复现的数据生成环境中作为 teacher，不进入服务器或客户端 shipping runtime。优先顺序是：① 拟合后的物理参数或查表；② 降阶/解析模型；③ 只有前两者达不到 Gate 1 精度时才考虑有界 surrogate/distilled policy。每一级都必须独立对生产 baseline 和 teacher 测试；teacher 的成功不为 student 提供稳定性、守恒、接触、OOD 或确定性保证。
+
+**最小 implementation slice：一个对象、一个固定种子场景、一个权威进程。**
+
+- [fact] control 是当前手调控制器/现有 Chaos 行为；treatment 是最小学生工件。两者读取完全相同的固定输入 trace、初态、资产、seed 和 physics-step 序列。
+- [assumption] 首选 slice 是“离线拟合参数/小型查表向现有求解路径提供有界参数”，因为它比神经 surrogate 更容易审计、序列化、确定和回退；若源研究不能导出此工件，记录失败原因后才评估下一层。
+- [unknown] 精确输入特征、单位、合法范围、归一化、时间窗口及缺失值语义。实施前由 Physics Research Owner 写入版本化 interface manifest；禁止用论文默认参数填空。
+- [unknown] 精确输出和施加位置。允许的概念级输出仅限有单位、上下界的材料/控制参数或力/冲量修正；不得直接覆盖权威 transform。输出必须 clamp，且每个边界有物理理由和测试。
+- [decision] 状态由服务器侧功能组件拥有，生命周期与物理对象一致；reset、level transfer、sleep/wake、销毁和序列化边界均写入 manifest。若使用历史窗口，fallback 时清空候选隐藏状态，仅携带基线可解释的 transform、线/角速度和经过验证的材料状态。
+- [derived hypothesis] Gate 1 treatment 的 tracking RMSE 相对 control 至少改善 10%，且接触/稳定性不劣于基线，才值得进入 Gate 2；这是 runtime 筛选阈值，不是论文 35% 的替代或复现。Owner：Physics Lead；须在看结果前批准或修改并冻结。
+
+**OOD、clamp 与失败语义。** OOD score 同时覆盖特征范围、速度/能量、接触数量、材料范围和模型置信度；阈值从独立 calibration split 冻结。[unknown] 数值阈值须在 Gate 1 entry 前确定。[decision] 连续两个 physics steps 超阈值触发（debounce），但 NaN/Inf、越过硬安全边界或无效资产立即触发；触发后该对象原子切换到 production baseline，至少停留 2 秒再考虑恢复。[derived hypothesis] “两个 step/2 秒”由 Physics Lead 所有，需以漏检、误报和切换尖峰测试校准。clamp 次数、幅度、OOD 原因、fallback 次数和驻留时间全部遥测。
+
+**数据、资产与许可证清单。** 每个论文数据集、轨迹、mesh、collision representation、material、控制器配置、teacher 输出、查表/模型、生成脚本和 checkpoint 都必须记录 canonical URI、获取时间、版本/commit、作者/owner、SHA-256、许可证或使用条款、允许用途、转换链和留存限制。[unknown] 当前这些信息均未提供；任一 shipping artifact 的权利不清即阻断 Gate 1，研究用途许可不得推定为商业分发许可。Python/CUDA 代码及其传递依赖也需单独 SBOM/许可证审查；不因它们仅作 teacher 而跳过数据衍生权检查。
+
+若采用学习工件，必须保存生成代码和环境、全部随机种子、超参数、checkpoint hash、model card、预处理、校准集，并按“场景/对象/轨迹家族”划分 train/validation/test；近重复样本只能在同一 split。泄漏检查包括 mesh 派生版本、时间上相邻轨迹和同初态扰动。held-out 集必须包含碰撞丰富、高能量、范围边缘和故意 OOD；test 只在阈值冻结后开启。
+
+## Runtime production contract
+
+**引擎映射。** [unknown] Unreal Engine、Chaos、平台、build、编译器、目标 CPU/GPU、服务器拓扑和网络模式的确切版本尚未提供，因此本 brief 不命名或假定任何 API。Gate 1 前必须 pin 版本与 build identity。概念映射仅为：服务器权威固定步物理状态 → Chaos 对象/约束/材料表示；学生输出 → 求解前的有界参数或受控作用量；基线 → 现有 production Chaos 路径；记录 → 与所 pin 版本兼容的 timing、memory、network 和 Chaos state/collision probes。每个 probe 先做“版本存在性、线程语义、时钟含义、开销”验证。
+
+**时钟和预算。** [fact] 渲染目标是 60 FPS，即每渲染帧约 16.67 ms；这不是 physics tick 预算。[unknown] physics tick 频率、fixed-step/substep policy、async policy、game/physics thread ownership、replication cadence 尚未决定，必须在 Gate 1 entry 前冻结并分别标注采样时钟。不得以可变渲染 delta 驱动权威结果，也不得用较低平均耗时掩盖 p95/p99 或最坏值。
+
+以下均为**整个功能的新增总上限**，不是可被各组件分别重复占用的额度：server CPU p95 ≤ 0.6 ms；GPU p95 ≤ 1.0 ms；新增常驻内存 ≤ 128 MB；每个相关对象带宽 ≤ 8 KB/s；相关对象最多 20 个。CPU 包含特征构造、候选计算、Chaos 增量工作、序列化、LOD/fallback 和遥测；GPU 包含同步与调度成本；内存包含模型/表、状态、历史和分配器开销；带宽包含 mode、状态、纠正和协议开销。[unknown] CPU/GPU p99 与 maximum 的产品上限尚未给出，不得编造；它们及内存峰值/分配抖动阈值必须由 Server Performance Owner 在 Gate 2 entry 前批准。所有报告包含 p50/p95/p99/max、样本数、warm-up、capture interval、同步 GPU 边界、硬件、build 和场景。
+
+**权威、确定性与网络。** [decision] 服务器计算并接受 gameplay physics state；客户端只发输入意图。客户端可运行 cosmetic prediction，但预测 transform 不作为服务器输入或真值，必须向服务器状态 reconcile。记录 correction 的位置/旋转/速度幅度、频率、收敛时间和可见跳变。包延迟、jitter、loss、乱序和重连均进入 Gate 2；每对象 8 KB/s 按实际 wire bytes 测量，不用 payload 大小替代。[assumption] 初始 determinism scope 仅为“同一 pinned server build、同一硬件类、同输入/seed/step 序列的固定种子 replay”；跨平台或跨硬件 bitwise determinism 不作承诺。Gate 2 必须验证该范围，扩大范围需新门禁。
+
+**Physics LOD 与可逆 fallback。** 候选仅有两级：LOD-Candidate 和 LOD-Baseline。[derived hypothesis] 对象距任一相关玩家 ≤20 m 且连续 0.5 秒处于训练/校准范围内才进入 Candidate；距离 ≥25 m 持续 1 秒、连续两个 step OOD、服务器压力 guardrail、版本/资产不匹配或任何异常则退出到 Baseline；正常切换最小 dwell 2 秒，硬安全事件可立即退出。20/25 m 提供 5 m hysteresis，所有数值由 Gameplay/Physics Lead 在 Gate 2 前基于玩法和压力测试冻结。
+
+切换时服务器保留同一权威 transform、线/角速度和已验证的基线材料状态；候选不得在 handoff 注入额外能量/冲量，候选历史在退出时丢弃、进入时由基线状态冷启动。服务器复制版本化 mode bit，客户端只据此选择 cosmetic 表现。遥测每对象每分钟切换数、原因、dwell、handoff 能量差和 correction；[derived hypothesis] 超过 4 次/分钟视为 thrashing 并在 Gate 2 失败。Baseline 必须独立稳定，feature flag 关闭时能在一个 physics step 边界内回退且不损坏状态；每次 gate 都主动演练，而不是只保留代码路径。
+
+**风险登记。** 高风险包括：离线/在线域差异；接触不连续与高能量发散；teacher/student 失配；数据泄漏或资产权利不清；目标硬件/引擎版本偏差；20 对象的尾延迟和内存增长；GPU 同步反噬 CPU；跨线程生命周期错误；客户端预测纠正可见；带宽放大；LOD 抖动/切换注能；遥测自身超预算。每项须有 owner、触发信号、缓解措施和 feature-flag fallback；无 owner 的高风险阻断下一 gate。
+
+## Gates and acceptance
+
+**统一 regression acceptance matrix。** 每个 gate 都保留 baseline/control 与 treatment 的同 trace 对照，并产出机器可读结果：CPU/GPU 的 p50/p95/p99/max；常驻/峰值内存和 allocation churn；每对象 wire bandwidth；NaN/Inf 计数（必须为 0）；penetration 深度与持续时间；correction 幅度/频率/收敛时间；OOD/clamp/fallback 率；LOD 切换和 handoff 能量差；固定 seed replay state hash。[unknown] penetration、correction、OOD、GPU/CPU p99/max 的数值阈值须由对应 owner 在首次使用该指标的 gate entry 前、盲于 treatment 结果地冻结；缺阈值或缺 telemetry 本身即 fail，而不是事后解释。
+
+### Gate 1
+
+**单对象 feasibility prototype。**
+
+- **Owner：** Physics Lead（实现与物理正确性）、Research Reproduction Owner（claim ledger）、Performance Owner（采样与预算签字）。
+- **Entry condition：** 论文/代码锚点和 deviation ledger 已冻结；复现的 ±4% 定义已解释；目标 Unreal/Chaos/build/硬件已 pin；最小 interface manifest、单对象资产、固定 scene/seed/trace、baseline、teacher/student hash、许可证和 stop rules 齐备；physics step policy 已冻结。
+- **实验与 artifact：** 在同一权威进程分别运行 control 与 treatment；保存原始 trace、配置、build identity、state hash、RMSE、接触/能量/penetration 序列、CPU/GPU capture、memory capture、OOD/clamp 日志和一键回退测试。至少包含正常 trace、边界 trace 和故意 OOD trace；“看起来更软”的视频只能作诊断附件。
+- **Pass threshold：** [derived hypothesis] 固定主 trace 上 treatment tracking RMSE 相对 control ≥10% 改善；NaN/Inf=0；无未受控 OOD；所有硬边界触发均在规定 step 内回退；penetration/能量/稳定性达到预冻结阈值；功能新增 server CPU p95 ≤0.6 ms、GPU p95 ≤1.0 ms、常驻内存 ≤128 MB；若产生复制数据，每对象 ≤8 KB/s。固定 seed 重跑满足声明的 repeatability scope。所有 capture 完整可复核。
+- **Fail/stop：** 任一 NaN/Inf、危险接触/持续穿透、状态损坏、OOD 漏回退、许可证/来源缺口、遥测缺失、任何总 cap 超限，或为达预算临时减少迭代/改阈值，立即停止。RMSE 未达阈值为普通 fail，不用目测救回。
+- **Next decision：** pass 只授权 Gate 2 的规模/网络工程，不授权玩家实验、production 或扩大 scientific claim；fail 则回退 Baseline，并只允许重新选择更小 approximation 后从 Gate 1 重测。
+
+### Gate 2
+
+**20 对象、碰撞、网络与预算 feasibility。**
+
+- **Owner：** Server Performance Owner（总预算）、Network Physics Owner（authority/reconciliation）、Physics Lead（接触/LOD/fallback）、QA Lead（对抗矩阵）。
+- **Entry condition：** Gate 1 签字；最多 20 相关对象的代表性与对抗 collision scenes 已冻结；physics/replication cadence、目标服务器硬件、客户端平台、延迟/jitter/loss/乱序矩阵、p99/max 与 correction/penetration 阈值已预注册；LOD 数值与 state handoff 已冻结。
+- **实验与 artifact：** 1/5/10/20 对象阶梯压测及最坏 20 对象集中碰撞；真实 server-authoritative client/server 运行；记录 input intent、wire bytes、预测/reconcile、rollback/resimulation（若选择）、LOD churn、OOD/fallback、线程时间、GPU 同步、内存峰值和 allocation churn。保存网络 capture、performance trace、Chaos state/collision probe、fixed-seed replay hash、fallback/flag-off drill 和版本化报告。
+- **Pass threshold：** 正常与预注册对抗 workload 中，整个功能 server CPU p95 ≤0.6 ms、GPU p95 ≤1.0 ms、新增常驻内存 ≤128 MB、每对象实际 wire bandwidth ≤8 KB/s；p99/max、峰值内存和 churn 达到预冻结阈值；NaN/Inf=0；penetration、correction、OOD 与 fixed-seed repeatability 达标；20 对象均保持服务器权威；所有 LOD handoff 达标且每对象切换 ≤4 次/分钟；强制 fallback/flag-off 100% 成功且状态不损坏。
+- **Fail/stop：** 任一 cap 或预冻结 tail threshold 超限、客户端 transform 影响权威状态、反复纠正不收敛、危险穿透、LOD thrashing、fallback 失败、OOD spike、内存持续增长、missing telemetry，立即 fail。不得通过减少测试对象、降低碰撞密度或只报平均值过关。
+- **Next decision：** pass 只授权 Gate 3 的受控产品价值 A/B；不授权全面上线。fail 回到 Baseline，并可在预算/近似不变的前提下修复后完整重跑 Gate 2；若改变 artifact/interface，则重回 Gate 1。
+
+### Gate 3
+
+**预注册玩家价值 A/B。**
+
+- **Owner：** Product Owner（价值假设和最小有意义效应）、Experimentation/Data Science Owner（功效与分析）、Safety/QA Owner（guardrail）。
+- **Entry condition：** Gate 2 通过；明确具体玩法和合格玩家；在看数据前注册主指标、最小有意义效应 `Δ_min`、随机化单位、样本量/功效、持续时间、曝光规则、排除规则、分析模型和停止规则。[unknown] 当前未给出具体玩法，因此主指标与 `Δ_min` 未冻结，不能启动实验。
+- **实验与 artifact：** A=production Baseline，B=同版本 Candidate，服务器分桶且记录实际 exposure/mode/fallback。主指标应是与该玩法直接相连的玩家结果（例如目标交互成功率或任务完成质量，最终只能选一个）；tracking RMSE 仅作机制指标。guardrail 至少包括 crash/stall、server tick tail、预算、NaN/Inf、penetration、correction 可见性、OOD/fallback、无障碍影响、会话健康/留存。保存预注册、分桶审计、功效计算、匿名化事件字典、分析代码和结果快照。
+- **Pass threshold：** B 对预注册主指标的置信区间完全超过 `Δ_min`，且所有工程和玩家 guardrail 不劣于预注册界限；曝光和 telemetry 完整度达阈值。统计不明确保持 `unknown`，不得用 demo、RMSE 或 stakeholder 偏好替代。
+- **Fail/stop：** 任一安全/正确性硬 guardrail、CPU/GPU/memory/network cap、NaN/Inf 或严重 correction/penetration 触发即停；样本量不足、SRM、曝光污染或关键 telemetry 缺失使结论无效并保持 unknown；主指标不达 `Δ_min` 为 product no-go。
+- **Next decision：** pass 只授权 Gate 4 的小流量 staged rollout；工程通过但价值未证实则保留 Baseline，不上线。若改变玩法、目标人群或主指标，重新预注册 Gate 3。
+
+### Gate 4
+
+**feature-flag staged rollout。**
+
+- **Owner：** Release Owner（ramp/rollback）、On-call Owner（告警处置）、Physics/Network/Performance Owners（证据复核）。
+- **Entry condition：** Gate 1–3 全部签字；候选 artifact/config/version hash 与 known-good Baseline 已锁定；server-side kill switch、按对象 fallback、dashboard、告警、runbook、审计日志和 rollback drill 均验证；值班和回滚权限明确。
+- **发布与 artifact：** [derived hypothesis] 按 1%→5%→25%→50%→100% 的合格流量逐级 canary，每级至少覆盖一个预注册高峰窗口和足够样本，只有证据复核签字才提升；阶段比例和观察期由 Release Owner 在发布前冻结。保存每阶段 exposure、预算分位数/最大值、crash/stall、NaN/Inf、penetration、correction、OOD、LOD thrashing、玩家主指标、flag/fallback 事件和回滚耗时。
+- **Pass threshold：** 每一级都保持 Gate 2 全部 correctness/performance/network 阈值和 Gate 3 玩家 guardrail；telemetry 完整且 artifact/config 与批准版本一致；kill switch 与 fallback 演练成功。100% 只在所有阶段通过后授权，并继续保留 flag 和 Baseline。
+- **Fail/stop：** 任一 NaN/Inf 或状态损坏立即自动禁用；任何总 cap、correction/penetration、crash/stall 或玩家 guardrail 越界立即停止 ramp 并回滚。[derived hypothesis] OOD 或 LOD 切换率超过 Gate 2 同 workload 基线 2 倍、连续两个 5 分钟窗口越界、或关键 telemetry 缺失 >1% 也自动停；这些窗口/比例由 On-call Owner 上线前批准。无法确认服务器权威时按严重正确性事件处理。
+- **Next decision：** 某阶段 pass 只授权下一阶段；全量稳定期通过才授权常规运营。任何 artifact、引擎/Chaos 版本、physics-step policy、authority 模式或数据分布的实质变化都撤销既有 transfer 证据，并按影响范围回到 Gate 1 或 Gate 2；known-good Baseline 始终可逆可用。

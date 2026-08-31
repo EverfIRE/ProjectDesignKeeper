@@ -1,0 +1,6 @@
+interface:
+  display_name: "Rapier Physics"
+  short_description: "Pin Rapier adapter and determinism contracts"
+  default_prompt: "Use $rapier-physics to review this Rust and JavaScript/WASM Rapier integration against pinned adapter boundaries."
+policy:
+  allow_implicit_invocation: true

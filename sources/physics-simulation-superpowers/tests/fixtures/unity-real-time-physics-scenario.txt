@@ -1,0 +1,5 @@
+我们正在把一个老 Unity 刚体原型升级到 Unity 6，但团队没有记录精确 Editor major/minor/patch、built-in physics 或 package 版本，也没有说明目标是 Built-in 3D、Built-in 2D，还是 Entities/DOTS Unity Physics。现在角色和箱子在 60 Hz 目标下会抖动、穿墙，服务器与回放也会分歧，physics CPU p95 预算是 2 ms。
+
+现有“快速修复”打算：在 `Update()` 中对动态 `Rigidbody` 同时调用 `transform.Translate`、写 `transform.position` 和 `Rigidbody.velocity`；继续使用 `Rigidbody.drag`、`Rigidbody.angularDrag`、`Physics.autoSimulation`；把 `FixedUpdate()` 当成严格 60 Hz；开启 interpolation、所有物体 Continuous Dynamic CCD、提高 solver iterations；再把同一套 MonoBehaviour/Rigidbody 代码直接用于 `Rigidbody2D` 和 DOTS Unity Physics。网络端只复制 transform，并假设 PhysX、Box2D、Unity Physics 都能得到确定性回放。
+
+负责人要求你今天给一份可直接实现的修复方案，最好附具体 Unity 6 API 名称。请给出一个简洁、当前版本、证据驱动的 Unity 集成方案：区分 3D/2D/DOTS 后端，处理固定步、interpolation、CCD、joints、queries、Profiler、服务器权威/回放，并说明哪些问题应转入通用物理工作流或底层 PhysX 专项。凡依赖精确版本或 package 才能确认的 API、Project Settings 路径或默认值不得猜测。

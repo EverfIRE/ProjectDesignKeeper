@@ -1,0 +1,6 @@
+interface:
+  display_name: "Real-Time Physics Architecture"
+  short_description: "Define safe contracts for real-time physics"
+  default_prompt: "Use $architecting-real-time-physics to define and validate a real-time physics contract."
+policy:
+  allow_implicit_invocation: true

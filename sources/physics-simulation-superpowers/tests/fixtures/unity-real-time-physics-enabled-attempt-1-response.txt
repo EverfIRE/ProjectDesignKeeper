@@ -1,0 +1,99 @@
+这不能用一套 MonoBehaviour “快速修复”。应先锁定版本和物理后端，再按独立适配器实现。
+
+### 1. 今天先冻结可复现基线
+
+记录并入库：
+
+- `Application.unityVersion`
+- `ProjectSettings/ProjectVersion.txt`
+- `Packages/manifest.json`、`Packages/packages-lock.json`
+- Client/Server/Replay 的构建目标、平台和角色
+- Physics、Physics 2D、Time 设置
+- 场景、Prefab、输入流、随机种子、初始状态及性能采集来源
+
+当前资料只是 Unity 6.3 LTS（6000.3）的文档快照，不能证明未知项目补丁中的 API、默认值或设置路径。以下具体新名称必须在冻结后的工程里编译确认：
+
+- `Rigidbody.linearVelocity`
+- `Rigidbody.linearDamping`
+- `Rigidbody.angularDamping`
+- `Physics.simulationMode`
+
+现有 `velocity`、`drag`、`angularDrag`、`Physics.autoSimulation` 应作为迁移项逐个审计，不能直接全局替换。
+
+### 2. 立即废弃现有运动写法
+
+每个物体只能有一个运动状态写入者：
+
+- `Update()` 只采样并缓存输入。
+- 在选定的固定模拟边界应用该 tick 的输入。
+- 动态刚体使用力/冲量，或由唯一控制器写速度。
+- `MovePosition`、`MoveRotation` 仅用于明确拥有运动权的运动学刚体。
+- 传送、重生和回滚恢复走独立代码路径。
+- 禁止同一动态物体同时调用 `transform.Translate`、写 `transform.position`、写刚体速度。
+- 禁止逐渲染帧直接改模拟中动态物体的 `Transform`。
+
+建议建立三个互斥适配器，游戏代码只提交“第 N tick 的运动意图”：
+
+| 后端 | Unity 世界边界 | 实现要求 |
+|---|---|---|
+| Built-in 3D | `Rigidbody`、`Collider`、`Joint`、`PhysicsScene`，底层 PhysX | 3D 力、碰撞、关节和查询全部留在对应 `PhysicsScene` |
+| Built-in 2D | `Rigidbody2D`、`Collider2D`、`Joint2D`、`PhysicsScene2D`，底层 Box2D | 单独实现和测试，禁止复用 3D 类型、设置或结果假设 |
+| DOTS Unity Physics | `com.unity.physics` ECS 世界 | 锁定 Unity Physics 与 Entities 包版本后，才确定组件、系统和查询 API；禁止机械翻译 MonoBehaviour |
+
+### 3. 固定步与画面表现
+
+若设计目标确实是 60 个模拟 tick/s，在确认工程设置和代码所有权后配置相当于 `Time.fixedDeltaTime = 1/60` 的固定步。它不表示 `FixedUpdate()` 严格按墙钟每秒执行 60 次：一个渲染帧可能执行零次或多次固定步。
+
+必须记录：
+
+- 每帧固定步数量
+- accumulator
+- catch-up 次数
+- 被上限裁掉或丢失的模拟时间
+- 手动模拟的唯一所有者
+
+不要把手动 stepping 当通用修复。如果确实需要服务器或回放显式驱动，先选定唯一时钟和唯一模拟入口；Built-in 3D 在确认版本后审查 `Physics.simulationMode`，2D 和 DOTS 分别实现自己的调度，不能共用 3D 开关。
+
+Interpolation 只用于渲染平滑，会增加表现延迟；它不修复穿墙、碰撞、服务器分歧或回放确定性。模拟状态、网络快照和哈希必须取固定 tick 状态，而不是插值后的 Transform。
+
+### 4. CCD、关节和查询
+
+- 不要给所有物体统一开启 Continuous Dynamic。
+- 根据“单 tick 位移相对碰撞体厚度”、相对速度和实际漏碰证据，只给高速且有风险的对象配置 CCD。
+- Solver iterations 只能通过单变量 A/B 测试调整；不能用全局加迭代掩盖错误的 Transform 写入、步长、薄碰撞体或关节配置。
+- 关节必须使用同一后端、同一世界、同一 tick 的刚体，并分别测试静止稳定性、冲击、堆叠、断裂和回滚恢复。
+- 3D 查询从正确的 `PhysicsScene` 发起；2D 查询从正确的 `PhysicsScene2D` 发起。
+- DOTS `CollisionWorld` 查询看到的是某个特定 tick 构建出的 broadphase；必须明确查询发生在构建前还是构建后，不能假设它反映刚写入的状态。
+- 查询结果需要确定排序或稳定消费规则；不要依赖未声明的返回顺序。
+
+CCD、接触、查询过滤和穿透问题应转入通用刚体碰撞工作流；关节稳定性转入约束/关节工作流；角色若需要台阶、坡面、贴地等语义，应单独做角色控制器设计，而不是继续叠加刚体写入方式。
+
+### 5. 服务器权威与回放
+
+采用服务器权威的固定 tick 协议：
+
+1. 客户端发送带 tick/sequence 的输入。
+2. 服务器在选定的唯一后端上推进权威模拟。
+3. 保存输入历史和完整状态历史。
+4. 客户端区分权威、预测、插值和纯表现对象。
+5. 收到校正后恢复到确认 tick，重放其后的输入。
+6. 每 tick 生成状态哈希并比较，同时保留带容差的数值诊断。
+
+快照至少应覆盖恢复模拟所需的姿态、线/角速度、休眠状态，以及控制器、关节和玩法状态；只复制 Transform 无法可靠重放。
+
+不要承诺 PhysX、Box2D、Unity Physics 之间，或不同版本、平台和编译配置之间的位级确定性。若业务要求可验证回放，应固定同一后端、版本、配置和初始状态，并用实际长时间回放测试证明；否则以周期性权威快照和回滚校正收敛。
+
+### 6. 2 ms p95 验收
+
+在目标 Player 和目标服务器构建中采集 Profiler 数据，不能用 Editor FPS 代替。使用相同场景、输入和种子做 baseline 与每次单变量 A/B，报告：
+
+- physics simulation、脚本、查询和同步成本
+- active body、contact、constraint、query 数量
+- 每帧固定步和 catch-up 数量
+- CPU p50、p95、p99
+- 抖动、漏碰、穿透、关节误差
+- 服务器/回放首次分歧 tick 和状态差异
+
+发布门槛是代表性最坏场景中 physics CPU p95 `<= 2 ms`，且没有非有限状态、权限/历史损坏、未知 API、无来源采集或未解释的回放分歧。
+
+Unity 包装层、场景和版本问题留在本集成方案；只有确认属于 Built-in 3D 原生 PhysX 的求解器、接触生成或 native 性能问题，才转交 PhysX 专项，并继续保留 Unity 版本、包装层和复现场景边界。

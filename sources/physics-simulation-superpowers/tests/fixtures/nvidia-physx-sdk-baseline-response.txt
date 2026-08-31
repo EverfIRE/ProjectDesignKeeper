@@ -1,0 +1,242 @@
+## Review
+
+The proposed integration is unsafe in several fundamental ways:
+
+- Do not track `main` for a production integration. Pin the exact PhysX 5.9.0 release tag and record the resolved commit, build options, compiler, CUDA toolkit, GPU driver requirements, and any local patches.
+- `simulate(renderDelta)` is wrong for a 120 Hz authoritative simulation. PhysX must advance with a fixed `1/120 s` timestep.
+- Ordinary scene mutation while `simulate()` is outstanding is not allowed. Queue changes and apply them only at a synchronization point after `fetchResults()`.
+- Raw `PxActor*` addresses are process-local, unstable, reusable, and unsuitable as network identities.
+- An everything-collides filter is both expensive and semantically inadequate for multiplayer gameplay.
+- GPU dynamics and GPU broad phase do not provide transparent, feature-equivalent CPU/GPU execution. GPU-only systems cannot run on CPU-only targets.
+- Enhanced determinism is not a cross-platform bit-identical rollback guarantee. A shared random seed does not fix floating-point, solver, scheduling, SIMD, compiler, or CPU/GPU differences.
+- PhysX binary serialization is not a durable cross-version or network snapshot format, and a `PxScene` should not be treated as a portable serialized game state.
+- `PxVehicleDrive4W` is a legacy integration point, while Vehicle2 is a different component-based vehicle pipeline. Do not copy legacy implementation into the upstream SDK or recreate upstream namespaces locally.
+- “Release in any convenient order” is incorrect. PhysX objects have explicit ownership and dependency relationships.
+
+## Version and build policy
+
+Vendor or submodule the pinned 5.9.0 source revision. Never consume a moving branch in CI. Produce a manifest containing:
+
+- PhysX tag and commit
+- build configuration and relevant compile definitions
+- compiler and standard-library versions
+- static versus shared linkage and runtime-library choice
+- CUDA toolkit and minimum validated driver
+- enabled modules
+- local patch hashes
+- cooked-asset format version
+
+Build CPU-only and CUDA-enabled variants independently. A non-CUDA executable should not accidentally acquire a runtime dependency on CUDA libraries.
+
+Use the SDK configuration names supplied by the pinned release and run checked/assert-enabled builds in CI. Confirm every exact target, option, sample name, and Vehicle2 header against the pinned 5.9.0 tree rather than assuming names from older PhysX releases.
+
+## Integration and lifetime plan
+
+Put PhysX behind a narrow engine adapter. Do not expose `PxActor*`, `PxShape*`, PhysX collection objects, or SDK-specific serialized bytes across the networking or persistence layers.
+
+Initialize in dependency order:
+
+1. Allocator and error callbacks, then `PxFoundation`.
+2. Optional PVD/OmniPVD connection and transport.
+3. `PxPhysics`, using an explicitly chosen tolerance scale matching engine units.
+4. PhysX extensions if required.
+5. Cooking with parameters derived from the same scale.
+6. CPU dispatcher.
+7. Optional CUDA context manager; immediately test whether it is valid.
+8. `PxSceneDesc`, including dispatcher, filter shader, callbacks, gravity, solver settings, and the selected CPU or GPU backend.
+9. Scene, materials, cooked resources, shapes, actors, articulations, joints, controllers, and Vehicle2 state.
+
+Validate `PxSceneDesc` and every returned pointer. Initialization must unwind cleanly after failure at any stage.
+
+Shutdown must first stop command submission, wait for outstanding jobs, and complete the last `fetchResults()`. Then destroy or release application-owned joints, vehicle objects, controllers, articulations, actors, aggregates, shapes, materials, and cooked-resource references according to their reference-counting contracts. Release the scene before its dispatcher or CUDA context manager. Close extension-dependent objects before closing extensions. Finally release cooking, physics, PVD and its transport, and foundation in dependency-safe order.
+
+Use explicit ownership wrappers with `release()` deleters and document whether each handle is owned, borrowed, or reference-counted. Add failure-injection tests for every initialization stage.
+
+## Fixed-step simulation
+
+Drive physics from a simulation clock, not the renderer:
+
+```cpp
+constexpr double step = 1.0 / 120.0;
+
+accumulator += clamp(realElapsed, 0.0, maxAcceptedElapsed);
+
+while (accumulator >= step && stepsThisFrame < maxCatchUpSteps) {
+    // The preceding simulate, if any, must already have been fetched.
+    applyCommandsForTick(tick);       // create/remove/mutate actors here
+    applyInputsForTick(tick);
+
+    scene.simulate(static_cast<float>(step));
+
+    // Non-PhysX work that neither reads nor writes restricted scene state
+    // may run while simulation is outstanding.
+
+    scene.fetchResults(true);
+    consumeEventsInStableOrder(tick);
+    publishStateForTick(tick);
+
+    ++tick;
+    accumulator -= step;
+}
+```
+
+Never issue another `simulate()` before fetching the previous one. Do not add, remove, teleport, or mutate actors while simulation is in flight unless the pinned SDK documentation explicitly marks that particular operation as legal. Scene read/write locks coordinate callers; they do not make illegal overlap with simulation legal.
+
+Simulation callbacks should record compact events into thread-safe queues. They should not perform arbitrary scene mutation. Apply resulting commands at the next tick boundary.
+
+Cap catch-up work and define an overload policy. An authoritative server should report missed deadlines instead of silently advancing with a larger timestep. Rendering uses interpolation between completed snapshots and never determines physics delta time.
+
+## Filtering and identity
+
+Define an engine-owned 64-bit entity handle containing an index or ID plus a generation number. Maintain mappings in the adapter:
+
+```text
+NetworkEntityId <-> PhysicsHandle <-> PxActor*
+```
+
+The pointer may be cached internally but must never be serialized, hashed as authoritative identity, or sent over the network. Validate generation numbers to prevent stale-handle reuse.
+
+Replace the everything-collides shader with an explicit collision matrix and pair policy covering at least:
+
+- world/static geometry
+- dynamic props
+- vehicles and wheels
+- characters
+- triggers
+- projectiles
+- debris and cosmetic objects
+- query-only shapes
+- owner/team/self-collision suppression
+
+Separate simulation filtering from scene-query filtering. Request contact notifications, contact modification, CCD, and trigger events only where needed; enabling them globally creates substantial CPU, bandwidth, and determinism costs.
+
+## CPU/GPU feature policy
+
+Treat CPU and GPU as distinct validated backends, not interchangeable implementations.
+
+For a GPU scene, create and validate the CUDA context manager, assign it to the scene, enable GPU dynamics, select GPU broad phase, and cook required meshes with GPU-compatible data. Size GPU dynamics buffers from measured worst cases and detect capacity errors, context errors, allocation failures, and device loss.
+
+At startup, select one explicit mode:
+
+- `CpuAuthoritative`
+- `GpuAuthoritative`
+- `GpuCosmetic`
+- `Unsupported`
+
+If CUDA initialization fails, create a fresh CPU scene with CPU settings. Do not continue under the assumption that every feature will automatically fall back. Changing backend generally requires rebuilding the scene from application-owned state.
+
+Deformable surfaces, deformable volumes, and PBD particle systems in upstream PhysX 5 are CUDA/GPU features; they do not provide a general CPU implementation. On CPU-only targets, choose one of these policies:
+
+- disable them;
+- substitute an engine-owned CPU approximation;
+- represent them with authoritative rigid or query proxies and keep the detailed GPU simulation cosmetic;
+- require validated CUDA hardware for that server role.
+
+If deformables or particles affect gameplay, the authoritative server must run the supported GPU path and replicate authoritative results. Clients using a different backend must not predict them as if CPU/GPU trajectories were identical.
+
+For a portable multiplayer server, CPU rigid-body simulation is the safer canonical backend. GPU simulation can still be used for client cosmetics or a separately qualified server fleet. Benchmark GPU broad phase before enabling it; small scenes may not benefit.
+
+## Rollback and determinism
+
+`PxSceneFlag::eENABLE_ENHANCED_DETERMINISM` can improve repeatability under its documented conditions, but it does not promise bit-identical Windows/Linux results. It also does not eliminate differences caused by:
+
+- compiler and optimization choices;
+- SIMD instruction sets, FMA, and floating-point modes;
+- CPU versus GPU solvers;
+- worker scheduling and callback ordering;
+- insertion and deletion order;
+- pointer-based ordering in application containers;
+- contact generation around numerical thresholds.
+
+Use enhanced determinism as one input to testing, not as a network contract.
+
+For best same-build repeatability:
+
+- run authoritative rollback on CPU;
+- keep the binary, compiler options, worker count, solver settings, and floating-point environment fixed;
+- disable fast-math-like transformations;
+- sort commands, callbacks, queries, and object creation by stable IDs;
+- avoid unordered-container iteration in gameplay decisions;
+- use fixed ticks and tick-stamped input;
+- quantize values used for gameplay thresholds;
+- keep random generation engine-owned with saved state.
+
+PhysX does not expose every solver and contact-cache detail required to restore an arbitrary scene exactly using public pose and velocity setters. Therefore choose a rollback design deliberately:
+
+1. Maintain a ring buffer of versioned game-state snapshots and tick inputs.
+2. Snapshot stable IDs, object existence, geometry references, pose, linear and angular velocity, sleep state, joint/drive state, vehicle state, gameplay state, and random-generator state.
+3. Store transient commands such as forces and impulses in the per-tick input log.
+4. Restore by rebuilding from an application keyframe or by reconciling live objects, then replay inputs.
+5. Expect tolerance-level rather than byte-level cross-platform agreement.
+6. Correct clients to server state using snap, blend, or replay policies appropriate to the error.
+7. Prefer historical query proxies for lag compensation instead of rewinding the entire authoritative PhysX world.
+
+If exact cross-platform deterministic rollback is a hard requirement, PhysX floating-point simulation is the wrong authoritative substrate; use a deliberately deterministic physics implementation for rollback-critical gameplay.
+
+## Serialization and networking
+
+Do not use a PhysX binary collection as a cross-version snapshot, save format, or packet. Treat binary serialization and cooked data as cache/build artifacts tied to a known SDK version, platform, architecture, and cooking configuration.
+
+Define an engine-owned, versioned wire schema with:
+
+- stable entity and asset IDs;
+- explicit byte order and numeric encoding;
+- tick number and baseline snapshot ID;
+- geometry type and content hash;
+- material and collision-layer IDs;
+- transforms and velocities;
+- mass and inertia where runtime-created;
+- joint and vehicle parameters;
+- sleep/activation and gameplay state;
+- schema-version migrations and bounds checks.
+
+Static meshes should be distributed as content-addressed source assets or per-platform cooked artifacts. Re-cook them whenever the PhysX/cooking compatibility key changes. Never accept arbitrary cooked PhysX blobs from an untrusted network peer.
+
+## Vehicle migration
+
+Inventory every 4.1-era dependency: `PxVehicleDrive4W`, wheel-query structures, tire-force callbacks, friction tables, suspension raycasts/sweeps, coordinate assumptions, unit scaling, telemetry, and serialization.
+
+Treat Vehicle2 as a new integration. The safe migration is:
+
+1. Preserve the old implementation as a test oracle, not as code copied into PhysX 5.9.
+2. Confirm the legacy vehicle APIs actually present in the pinned 5.9.0 headers.
+3. Implement an engine-side vehicle interface independent of both SDK generations.
+4. Build the Vehicle2 component sequence and simulation context using the upstream public API.
+5. Convert chassis, axle, wheel, suspension, steering, tire, brake, differential, and drivetrain data explicitly.
+6. Reproduce input smoothing and update order rather than assuming old defaults.
+7. Compare controlled manoeuvres against recorded 4.1 results: straight-line acceleration, braking, constant-radius cornering, split-friction braking, curb impacts, airborne landing, sleep/wake, and rollback restore.
+8. Retune values where the new tire or suspension model differs.
+
+Do not define private symbols inside `physx` or `physx::vehicle2`. If `PxVehicleDrive4W` is absent upstream, either finish the Vehicle2 port or keep the old SDK in a completely isolated reference tool with separate symbols and process boundaries. Linking copied legacy vehicle code into the new SDK creates unsupported ABI and maintenance risks.
+
+## Tooling and validation gates
+
+One HelloWorld run and one capture are insufficient. Require:
+
+- CPU and CUDA builds on Windows and Linux;
+- checked/assert-enabled and optimized builds;
+- upstream samples for every selected subsystem, using names verified in the pinned source;
+- allocator/error callback logging with warnings treated as CI failures where appropriate;
+- ASan/UBSan on supported CPU configurations and Windows memory diagnostics;
+- NVIDIA Compute Sanitizer and Nsight tooling for CUDA paths;
+- PVD or OmniPVD captures for contacts, sleeping, constraints, and performance investigations;
+- leak and outstanding-reference checks at shutdown.
+
+Automate these test groups:
+
+- lifecycle and partial-initialization failure;
+- fixed-step scheduling, stalls, catch-up limits, and tick numbering;
+- illegal mutation/read attempts during outstanding simulation;
+- collision-matrix and query-filter behavior;
+- stable handle reuse and stale-generation rejection;
+- snapshot encode/decode, schema migration, malformed input, and endian tests;
+- actor creation/deletion and joint restoration during replay;
+- repeated same-binary determinism runs with state hashes sorted by stable ID;
+- cross-platform comparison using documented numeric and gameplay tolerances;
+- CPU/GPU semantic comparison without requiring identical trajectories;
+- CUDA absent, invalid context, OOM, buffer exhaustion, and device-loss handling;
+- deformable/particle capability rejection on CPU-only systems;
+- long-duration vehicle, stacking, tunnelling, sleep/wake, and origin-shift tests;
+- worst-case 120 Hz soak tests with step-time percentiles and memory growth.
+
+The release gate should require the authoritative server to remain inside its 8.33 ms tick envelope at the chosen percentile, with explicit headroom for networking and gameplay. It should also require zero PhysX errors, no unsupported-feature fallback, bounded reconciliation error, validated snapshot migrations, and clean shutdown across the full platform matrix.

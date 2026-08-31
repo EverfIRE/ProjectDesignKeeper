@@ -1,0 +1,6 @@
+interface:
+  display_name: "Physics Debugging and Testing"
+  short_description: "Find physics root causes and regressions"
+  default_prompt: "Use $debugging-testing-physics to turn a physics failure into a falsifiable reproducer and regression plan."
+policy:
+  allow_implicit_invocation: true

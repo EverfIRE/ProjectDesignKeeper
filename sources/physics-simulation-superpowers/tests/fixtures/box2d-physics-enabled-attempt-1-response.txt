@@ -1,0 +1,161 @@
+The proposed integration is unsafe as written. Do not implement adaptive frame-delta stepping, post-step contact disabling, body teleports, persistent event pointers, indefinite raw IDs, bullets on all movers, or “same seed” rollback.
+
+### 1. Freeze the API domain
+
+Pin Box2D **v3.1.1**, released 2025-06-04, at commit:
+
+```text
+8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3
+```
+
+Treat the tagged v3.1.1 public headers as authoritative; the website Doxygen remains at 3.1.0. Reject the unrecorded binary and rebuild it. Record:
+
+- Source-tree, public-header, and library hashes
+- CMake options and Box2D compile definitions
+- Compiler/version, target architecture, floating-point and contraction flags
+- Task-system implementation and worker count
+- Adapter version
+
+Compile a small adapter/API probe against that exact header and library in CI. Do not import experimental 3.2 `main` APIs from commit `617d32ab02570930625bbcb8479f54be9bf8d045`, including snapshot, recording, state-hash, runtime-worker, or additional CCD interfaces.
+
+The stable interface is the 3.x C API: default definitions such as `b2DefaultWorldDef`, opaque value IDs, free functions, shapes rather than fixtures, and:
+
+```c
+b2World_Step(worldId, fixedDt, substepCount);
+```
+
+The 2.4 C++ object graph, pointers, fixtures, listeners, and iteration-count `Step` overload do not belong in this adapter.
+
+### 2. Stepping and tasks
+
+Drive physics from an accumulator at a fixed tick; render using interpolation. Do not pass render delta to Box2D and do not change substeps in response to frame time.
+
+Evaluate fixed-tick candidates such as 60 and 120 Hz, with substeps `{1, 2, 4, 8}`. Select the cheapest configuration that passes the character, platform, joint, and projectile limits below on the slowest supported machine, then freeze both tick rate and substep count. The upstream `1/60`, four-substep determinism case is a useful artifact check, not an application tuning result.
+
+Freeze a worker count too. Never derive it from hardware concurrency at runtime. A count above the serial default requires correct `enqueueTask`/`finishTask` callbacks and worker indices. During `b2World_Step`:
+
+- Treat the world as exclusively locked.
+- Permit no world reads or writes from task or collision callbacks.
+- Give callbacks immutable, precomputed context.
+- Publish bounded results into thread-local or indexed storage.
+- Join tasks before queries or gameplay mutation.
+
+Drain body, sensor, and contact events after every main step, not after internal substeps.
+
+### 3. Ownership, destruction, and event lifetime
+
+Use stable application IDs as the only durable identity. A raw `b2BodyId`, `b2ShapeId`, or joint ID is an adapter-local handle valid only while its mapping is live. `IsValid` is a guard, not persistence or identity.
+
+Normalize all mutations at a tick boundary and expand cascades explicitly:
+
+- Destroying a world invalidates every body, shape, chain segment, and joint.
+- Destroying a body destroys its attached shapes and joints.
+- Destroying a chain or its body invalidates all segment shape IDs.
+- Shape destruction and density changes require an explicit mass policy through `updateBodyMass` or `b2Body_ApplyMassFromShapes`.
+- Sensor shapes may contribute mass, and sensor status cannot be toggled after creation.
+
+Process borrowed event arrays before any further step or gameplay mutation. Immediately copy required scalars and resolve raw handles to application IDs. End-touch events may arise from destruction and may contain already-invalid raw IDs, so destruction commands and durable mappings must determine identity.
+
+Events are deltas, not persistent objects. Maintain application-owned overlap/contact/support sets keyed by stable IDs. Canonicalize copied events by event kind and application IDs before gameplay priority resolution or hashing.
+
+### 4. Character and platform contract
+
+For this platformer, start with a **solver-driven physical capsule** because the character must interact naturally with lifts, joints, moving platforms, and other bodies. Do not teleport the capsule onto a ray hit; that bypasses contact generation, solver impulses, CCD, and platform-relative motion.
+
+Use:
+
+- Filtered persistent foot/support contacts for grounded state
+- A short capsule/shape cast as predictive support confirmation where needed
+- Surface-normal, foot-region, approach-side, and relative-velocity tests
+- Explicit supported/unsupported transitions so landing fires once
+- Small gameplay hysteresis or coyote time outside the physics identity contract
+
+A downward ray alone is too narrow around seams and edges. Query and cast callbacks may be unordered, so collect all candidates and sort by fraction and durable ID. Treat a zero-fraction cast with zero normal as “starts inside,” not as a valid surface normal.
+
+Move platforms through a continuous physical/kinematic trajectory, not post-step teleports. Resolve character target velocity relative to the qualified support body; preserve support identity across ticks. Let solver friction carry the body, with any gameplay-specific support-velocity contribution applied before solving and measured for slip.
+
+The experimental v3.1.1 geometric mover is a separate alternative: `b2World_CollideMover`, `b2World_CastMover`, `b2SolvePlanes`, then `b2ClipVector`. It is capsule geometry outside world ownership, not a dynamic body, and the application must supply steps, slopes, platform motion, persistent support, pushing, rotation, events, and replication. Do not combine it with body teleportation or solver contacts.
+
+### 5. Sensors and one-way platforms
+
+Enable sensor and contact events only where needed. Maintain persistent gameplay overlap sets from their transient begin/end events. Sensors can detect other sensors, so apply explicit filtering. Sensors have no CCD; use a ray or shape cast when a fast crossing must be detected.
+
+One-way decisions must happen in the v3.1.1 PreSolve callback before impulses are resolved. Disabling a contact after `b2World_Step` is too late. Enable PreSolve only on the required shapes and re-evaluate every step because contacts re-enable during collision processing.
+
+The callback must use immutable pre-step context and gate on:
+
+- Platform top side and previous foot position
+- Relative normal velocity
+- Drop-through state
+- Platform translation and rotation
+- Spawn/initial overlap
+- Capsule extent and platform thickness
+- A maximum qualified crossing speed
+
+Stable v3.1.1 explicitly warns that this PreSolve technique is unreliable for high-speed collisions and may pause the body. Define a supported speed/thickness envelope. Outside it, use a cast-backed policy, redesign the geometry, or decline one-way behavior rather than claiming it works.
+
+### 6. CCD policy
+
+Keep ordinary continuous collision enabled, but set bullet mode only on sparse bodies proven to need dynamic-versus-kinematic or dynamic-versus-dynamic CCD—normally the fast projectiles.
+
+Default CCD covers dynamic-versus-static. Bullet mode extends coverage to static, kinematic, and dynamic targets, but not other bullets, and may interfere with joints. Sensors receive no CCD. Continuous-collision contacts may produce ordinary events on the following step, so define acceptable event latency.
+
+Test each declared projectile class across its full radius, speed, target thickness, impact angle, and target-motion range. Compare bullet, ray-cast, and swept-shape-cast policies; do not enable bullets globally.
+
+### 7. Determinism and rollback claim
+
+Box2D targets deterministic behavior across supported 64-bit platforms under its documented build constraints, and its pinned test checks worker counts 1–5. That is not an application rollback guarantee.
+
+First verify the exact artifact with the upstream deterministic case:
+
+```text
+dt:                  1/60
+substeps:            4
+workers:             1–5
+expected sleep step: 288
+expected hash:       0x35467e1e
+```
+
+Then qualify the application independently. Stable v3.1.1 has no public snapshot or rollback API. Transforms do not restore hidden contacts, solver state, sleep state, joint state, or gameplay state. Rebuilding is credible only when starting from the same complete initial world and replaying the full, canonically ordered history of:
+
+- Creation and destruction commands
+- Inputs and gameplay commands
+- Joint, motor, filter, and material changes
+- Application RNG/state changes
+- Callback decisions and event-derived state
+
+Replay fixed ticks, not captured render deltas. Hash every gameplay-relevant entity on every tick, keyed by durable IDs: transforms, linear/angular velocities, awake state, joint configuration/state, overlap/support sets, controller state, timers, RNG, and copied canonical events. Save the first divergent tick and a structured field diff. Comparing only final player transforms can miss transient or non-player divergence.
+
+A defensible claim is therefore: “this exact pinned adapter/build/configuration passed these replay lanes.” Worker-count, compiler, platform, architecture, build-flag, or Box2D-version changes are new compatibility lanes requiring requalification. There is no future-3.x or arbitrary-build rollback guarantee.
+
+### 8. Executable evidence matrix
+
+Run after warm-up on minimum-spec Windows and Linux hardware:
+
+| Dimension | Cases |
+|---|---|
+| Tick/substeps | 60 and 120 Hz × 1, 2, 4, 8 substeps |
+| Workers | Serial plus fixed production candidates; determinism lanes 1–5 |
+| Rendering | 48, 60, 120, 144, 240 Hz and hitch/catch-up traces |
+| Scene | Four players, approximately 2,000 active shapes, dense contacts, sensors, lifts/joints |
+| Platforms | Translation, rotation, reversal, seams, slopes, spawn overlap, drop-through |
+| Projectiles | Speed/radius/thickness/angle matrix; static, kinematic, dynamic, sensor, bullet targets |
+| Lifetime | Arbitrary queued destruction, body/joint cascades, delayed end events, allocation churn |
+| Replay | Same build and cross-worker/compiler/OS/CPU qualification lanes |
+
+Record per-step and per-render-frame catch-up cost, with median, p95, p99, and maximum—not only averages. Capture Box2D step profiles and solver counters, active bodies/shapes/contacts/joints/islands, task counts, body/sensor/contact event counts, query/cast candidate counts, and first-divergence hashes.
+
+Predeclare pass limits for:
+
+- Physics p99 within the 3 ms budget
+- Grounded transition count and zero duplicate landings
+- Maximum platform-relative slip
+- Maximum penetration and joint/lift error
+- One-way outcome for every approach class
+- Projectile miss rate and event latency
+- Zero stale-ID access and zero callback world access
+- Identical per-tick semantic hashes in every claimed determinism lane
+
+Choose the minimal-cost tick/substep/worker configuration satisfying all limits. If none does, reduce collision work, narrow CCD scope, change the character contract, or raise the tick budget; do not hide instability with adaptive substeps.
+
+Generic loop/phase ownership belongs in `architecting-real-time-physics`; collision and one-way mechanics in `rigid-body-collision-contact`; lifts in `constraints-ragdolls-active-physics`; controller selection in `character-controller-movement`; rollback and semantic hashing in `networked-deterministic-physics`; adversarial reproduction in `debugging-testing-physics`; and budget/scaling work in `profiling-scaling-physics`.

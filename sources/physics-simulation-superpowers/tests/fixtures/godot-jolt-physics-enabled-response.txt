@@ -1,0 +1,99 @@
+当前不能直接给出“项目已兼容当前 Godot 4”的结论。以下以 **2026-08-28 的 Godot 4.7.2-stable 文档快照**为迁移基线；所有精确 API、设置路径和默认值仍须在项目冻结后验证。
+
+### 1. 先冻结迁移基线
+
+记录并归档：
+
+- 编辑器完整版本/build/commit及对应 export templates
+- 目标 OS、架构、renderer、客户端/服务器构建角色
+- `project.godot`
+- addons、`.gdextension`、旧 Godot Jolt extension/package 状态
+- 当前选中的 3D backend及 physics/common 设置
+- 测试场景、资源、输入、随机种子和性能采集来源
+
+不要猜测 `physics/jolt_3d` 等设置是否仍存在或已迁移。先建立项目专属兼容矩阵，对形状、关节、margin、睡眠、CCD、接触、kinematic 行为等逐项 A/B 测试。
+
+### 2. 明确 2D/3D 边界
+
+- `CharacterBody2D`、`RigidBody2D`、`PhysicsServer2D`始终属于 2D 世界。
+- 内置 Jolt 是 3D backend，对应 `CharacterBody3D`、`RigidBody3D`和 `PhysicsServer3D`。
+- 4.6 起，内置 Jolt 只成为“新建 3D 项目”的默认后端；已有项目不会自动切换。
+- 切换 3D backend不会迁移或替换 2D 物理。
+- 不要同时套用旧 extension 的假设和内置 Jolt 的设置；须先识别、隔离并验证旧扩展状态。
+
+### 3. 修正节点与运动所有权
+
+Godot 3 的 `KinematicBody` 方案不能原样沿用。Godot 4 应按维度迁移到 `CharacterBody3D`或 `CharacterBody2D`：
+
+- 脚本控制的角色运动放在 `_physics_process(delta)`。
+- `velocity`是每秒速度状态。
+- `move_and_slide()`无运动参数，不能传 `velocity * delta`，否则会重复应用时间步。
+- `move_and_collide(motion)`接收单步位移，因此其 motion 才可以是 `velocity * delta`。
+
+概念上应为：
+
+```gdscript
+func _physics_process(delta):
+    # 更新 velocity（单位/秒）
+    move_and_slide()
+```
+
+或在确需单次碰撞运动时：
+
+```gdscript
+func _physics_process(delta):
+    move_and_collide(velocity * delta)
+```
+
+`RigidBody3D`的 transform由模拟器拥有。不得在 `_process()`中每帧写 `global_transform`；应指定唯一物理状态写入者，通过适用的力、冲量、速度控制或冻结版本所支持的 integration hook驱动。若对象本质是脚本/动画平台，应重新选择合适的 body 类型。传送、复位属于独立操作，需按冻结版本更新受支持的物理状态，并调用该版本文档规定的 interpolation reset。
+
+### 4. Tick、PhysicsServer 与 interpolation
+
+SceneTree负责按配置的固定物理 cadence推进活动世界。不要再调用 `PhysicsServer3D`创建第二套手动 step；这可能造成重复步进、生命周期和同步错误。若确有受控步进需求，必须先确认冻结版本公开支持的入口、所有权、回调顺序和同步证据。
+
+Interpolation只平滑已完成物理状态之间的显示：
+
+- 不提高碰撞求解质量；
+- 不修复错误的状态写入；
+- 不提供网络权威、回放正确性或确定性；
+- 传送、重生和原点迁移需要版本对应的 interpolation reset。
+
+因此不能用“全局开 interpolation、提高 solver steps”代替定位问题，也不能在未验证设置路径和默认值时照抄全局参数。
+
+### 5. 性能验收
+
+以 physics CPU **p95 ≤ 2 ms**为明确预算，在目标硬件上使用相同场景、输入和种子，对 release/server目标构建采集：
+
+- Godot Profiler；
+- 冻结版本实际提供的 `Performance` monitors；
+- physics/frame time的 p50、p95、p99；
+- 实际可用的 active bodies、contacts、tick backlog等证据。
+
+Visual Profiler不包含脚本和物理，不能单独用于这项判断。每次只改变一个变量，分别验证形状、尺度、质量/惯量、过滤、CCD、接触/约束成本和 cadence；不要编造 monitor 名称或 solver 设置。
+
+### 6. 权威与回放
+
+Godot明确将物理视为非确定性系统，不论使用哪个 backend。不能承诺 Jolt 让 Windows、Linux、客户端和服务器逐位一致。
+
+采用服务器权威模型，并记录：
+
+- tick化输入；
+- 权威快照与客户端校正；
+- 状态和事件历史；
+- 版本、平台、配置、场景、资源和种子身份；
+- 回放/hash的容差与验收标准。
+
+只复制 transform属于显示同步，不足以重建碰撞状态、速度、睡眠、接触和事件，也不能证明回放正确。
+
+### 7. 后续工作流分流
+
+- cadence、状态所有权：`architecting-real-time-physics`
+- 角色控制器设计：`character-controller-movement`
+- contacts、queries、CCD：`rigid-body-collision-contact`
+- joints、ragdolls：`constraints-ragdolls-active-physics`
+- 权威、预测、回放：`networked-deterministic-physics`
+- 最小复现与回归：`debugging-testing-physics`
+- 2 ms预算与性能采集：`profiling-scaling-physics`
+- Jolt原生 API、`JobSystem`、layers、listeners、序列化、构建标志及上游确定性：`native-jolt-physics`
+
+原生 Jolt 的能力或保证不能直接投射为 Godot wrapper 的保证。

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "run_id": "stack-test-001",
+  "engine": "Jolt 5.2",
+  "units": "meters-kilograms-seconds",
+  "timing": {"render_fps_target": 60, "physics_hz": 120, "fixed_dt_seconds": 0.0083333333, "max_substeps": 2},
+  "authority": "server",
+  "network": "snapshot",
+  "platform": "Windows",
+  "budget": {"cpu_ms": 4.0, "gpu_ms": 2.0, "memory_mb": 512},
+  "seed": 12345
+}

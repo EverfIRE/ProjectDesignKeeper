@@ -1,0 +1,6 @@
+interface:
+  display_name: "Unity Real-Time Physics"
+  short_description: "Gate Unity physics integrations with evidence"
+  default_prompt: "Use $unity-real-time-physics to freeze the Unity project context and produce a sourced physics integration plan."
+policy:
+  allow_implicit_invocation: true

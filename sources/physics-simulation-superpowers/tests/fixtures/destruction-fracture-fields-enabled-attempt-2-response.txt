@@ -1,0 +1,58 @@
+## Destruction contract
+
+- 结论：不能靠降低 solver iterations、GPU fracture、继续同步全部碎块和统一 3 秒 lifetime，证明最坏爆炸链的服务器物理 CPU p95 能从当前 12 ms 降到 3 ms。先建立可裁剪、可准入、可回滚的服务器权威破坏系统；在缺失预算与容差补齐前，3 ms 只能作为验收目标，不能承诺达成。
+- 世界契约：显式声明世界坐标系、轴向、手性、原点与局部/世界变换规则；当前未知，是重放和场方向验证的阻塞项。
+- 重力契约：声明重力方向、大小、适用对象及改变顺序；当前未知。
+- 单位契约：声明长度、质量、时间单位及资产导入缩放；60 FPS 只是渲染目标，不能据此推定物理步长。
+- 质量/密度契约：为完整体、簇和碎块规定材料密度、质量计算、质量守恒及最小可模拟尺度；当前材料和尺度要求未知。
+- COM/惯量契约：为每种拓扑状态验证质心、惯量张量、坐标框架及拆分后的守恒关系。
+- 固定 tick 契约：另行声明物理固定 tick、输入和破坏事件采样点、事件生效 tick、渲染插值以及确定性/重放范围；不得从当前 60 Hz transform 复制频率推断。
+- 权威契约：服务器是唯一 gameplay fracture、damage、support、release 和运行时二次断裂权威。客户端请求不能直接改变真实拓扑；本地尘土和小碎屑只能是 cosmetic，不能参与伤害、阻挡、计分或服务器支撑判断。
+- 拓扑契约：采用已有预切与受控二次断裂组成的 hybrid 路径，但玩法碎裂尺度尚未声明，具体分界不得擅定。定义静止拓扑、层级/簇、bond、canonical topology，以及稳定的 asset/cluster/piece/child ID；事件重复或乱序不能产生新拓扑。拓扑变更必须原子提交，失败时回滚并使相关缓存失效。
+- 支撑契约：显式定义承重 bond、anchored/world support、支撑传播和 connectivity/island 重算。删除承重墙后，只在权威 release tick 释放失去世界支撑的连通岛。整楼瞬间同时掉落或长期悬空分别提示支撑传播、连接重算、事件顺序或缓存失效问题，必须用记录验证，不能用 solver 调参掩盖。
+- 损伤契约：逐材料声明 damage、strain、fatigue、断裂条件、阈值和 hysteresis；验证低于/高于阈值、累积损伤、同时命中及运行时二次断裂。材料、应变规则和阈值尚未声明，阻塞调优与验收。
+- 场契约：每个爆炸场声明 shape、坐标 frame、falloff、channel、magnitude、duration、应用顺序、候选过滤、重叠合成、impulse/work/damage 关系。候选查询必须有界，禁止对全部约 3000 块或不断增长的碎块集合执行无界全局循环。
+- 碰撞契约：分别定义 intact、cluster、fragment body，代理形状、过滤、CCD、接触/manifold/island、激活/睡眠、分离冲量和初始重叠处理；实测后决定 fragment-fragment 接触策略。高精度凸体永久接触不能作为默认。碰撞代理误差和穿透容差未声明，是阻塞项。
+- 生命周期契约：状态机至少覆盖 gameplay、cosmetic、sleeping、pooled、despawned；记录状态转换，区分渲染与物理对象，支持 gameplay-safe deactivation、缓存/池化、VFX 尘土、层级 hysteresis、恢复和 checkpoint。生命周期应由相关性、可见性和预算驱动，不能统一采用 3 秒，也不能永久保留全部高细节刚体。
+
+## Staged build and diagnosis
+
+1. 冻结服务器为唯一 gameplay 权威，用同一输入、seed 和事件序列建立可重放基线。
+2. 暂停二次断裂，验证完整建筑的质量、COM、惯量、碰撞和静态支撑图；单独删除一个支撑，检查 connectivity、island 与 release tick。
+3. 加入层级、cluster 和 bond，仍不启用二次断裂；验证分离冲量、缓存失效、睡眠和支撑一致性。
+4. 只允许服务器触发一次受权威控制的运行时断裂；验证 stable child ID、canonical topology、原子提交/回滚及客户端幂等应用。
+5. 碰撞从粗 cluster 逐步细化到受预算约束的 gameplay fragments；分别测量代理误差、穿透、CCD、contacts、manifolds 和 islands。
+6. 每次只加入一个场 channel，验证候选过滤、方向/径向场、重叠顺序、冲量、做功和损伤。
+7. 加入 gameplay/cosmetic 分区、睡眠/池化/销毁状态机、相关性层级和分层复制。
+8. 在声明的最大并发条件下运行最坏爆炸链，逐阶段剖析 fracture、support、field query、collision、island、replication 和 lifecycle 成本。当前“最大并发爆炸”未知，因此最坏情况尚无有限边界。
+- 诊断假设：客户端裂缝与倒塌顺序不同，优先检查双重 fracture 权威、事件排序、seed/ID 和拓扑提交；CPU p95 飙升，分别核查活动体、永久接触、高精度代理、碎块互撞、场候选和二次断裂；带宽飙升，核查 60 Hz 全碎块 transform 复制。每项都必须由独立指标证实。
+
+## Authority, budgets, and degradation
+
+- 复制 fracture/damage/release 事件的 tick、稳定 ID、参数、seed 和全序；客户端按序、幂等应用。对 gameplay bodies 提供 checkpoint、加入中途恢复和有序纠错，不以 60 Hz 全碎块 transform 流作为破坏真相。
+- cosmetic debris 在客户端本地生成；不复制其 60 Hz transform，不进入服务器接触、支撑、伤害、阻挡或计分。gameplay 碎块才可进入权威 checkpoint 与纠错，具体复制频率和容差待预算声明。
+- 任何拓扑突变前先做预算准入；超限必须公开 cap hit，并选择可恢复降级，不能静默丢事件。
+- 必须声明并分别限制 piece、cluster、contact、query、field candidate、tear event 和 active body；同时声明 CPU、内存及网络预算。CPU 已知硬目标仅为最坏链服务器物理 p95 不超过 3 ms；当前基线为 12 ms。
+- 可逆降级顺序包括：合并/保持较粗 cluster、降低碰撞代理复杂度、限制受权威二次断裂、将更小效果转为 VFX、让无玩法作用对象睡眠或入池、缩小有界场候选集。始终保留支撑正确性、gameplay collision、damage、事件顺序和可恢复状态。
+- 降低 solver iterations 只能作为通过碰撞/稳定性容差验证后的候选优化，不能修复双权威、错误支撑图或无界活动体；GPU fracture 不能替代服务器的权威拓扑提交、支撑重算、刚体接触和可重放要求；继续同步全部碎块保留带宽问题；统一 3 秒销毁会误删仍具玩法作用的碎块，并可能形成同步回收尖峰。
+- 当前阻塞项包括：网络预算、内存预算、玩法必须保留的最小/最大破坏尺度、可见/相关距离、最大并发爆炸、材料/损伤/应变/疲劳规则、碰撞代理误差与穿透容差、复制延迟、客户端校正容差；另包括世界/重力/单位、密度与质量规则、COM/惯量规则、物理固定 tick、确定性/重放范围、拓扑层级与 bond/support 语义、所有 caps、客户端视觉容差及生命周期相关性规则。补齐前不得选择未知阈值、上限、速率或保证 3 ms。
+
+## Acceptance
+
+- 首个同 seed、同输入 A/B：**A**＝当前客户端与服务器各自 fracture、所有活动碎块以 60 Hz 同步 transform、永久保留高细节凸碰撞刚体与刚体尘土/小碎屑，并加入团队提议的降低 solver iterations、GPU fracture、3 秒 debris lifetime；**B**＝上述分阶段服务器权威事件架构与 gameplay/cosmetic 分区。
+- 场景必须覆盖：单支撑删除；低于/高于损伤阈值；有序同时命中；渐进倒塌；运行时二次断裂；重叠方向场与径向场；最坏并发爆炸链；近端/远端观察者；加入中途/checkpoint；包延迟、丢失和乱序。
+- 支撑指标：anchor/world support、bond 状态、connectivity、island 归属、重算结果与 release tick。
+- 拓扑指标：canonical topology/hash、cluster/piece/tear-event 数量、提交/回滚、重复/乱序事件和缓存失效。
+- **stable-ID errors**：单独统计 asset、cluster、piece、child ID 的缺失、冲突、复用和不稳定映射。
+- **first replay-divergence tick**：单独记录第一次服务器、客户端或重放状态分歧的 tick 及前导事件。
+- 损伤指标：damage、strain、fatigue、断裂阈值判定和 hysteresis 状态。
+- 质量与动力学指标：拆分前后质量、COM、惯量、线/角动量、动能、场做功、分离冲量及非物理能量增长。
+- 碰撞指标：代理误差、穿透、CCD、contacts、manifolds、islands、初始重叠和各项 cap hits。
+- **active/sleep/pool/despawn counts**：分别记录活动、睡眠、池化、销毁数量及各状态转换，不能合并为单一 debris 数。
+- 场指标：候选数量、过滤结果、channel/order、重叠合成、impulse、work、damage 和 field/query cap hits。
+- 网络指标：每事件字节数、checkpoint 字节数、带宽、重复/乱序恢复、复制延迟、客户端 correction error 与 correction delay。
+- 内存指标：拓扑、刚体、碰撞代理、接触、缓存、池和 VFX 的常驻/峰值内存及 cap hits。
+- CPU 指标：服务器物理 CPU p50/p95/p99，并拆分 fracture、支撑重算、场查询、碰撞/solver、island、生命周期和复制准备成本。
+- 接受：所有已声明且有限的 gameplay、视觉、碰撞、重放、网络和内存容差均满足；事件能有序恢复；没有静默 cap loss；最坏爆炸链服务器物理 CPU p95 不超过 3 ms。
+- 普通拒绝：任何非致命容差、预算或 cap 不满足，包括代理误差、纠错延迟、带宽、内存或视觉偏差超限；保留记录并继续调优，不宣称通过。
+- 致命停止并回滚：出现非有限状态、损坏或重复 topology/ID、持续增长的穿透或能量、不一致支撑、未经授权的破坏真相、静默 cap loss、不可恢复分歧，或最坏链 CPU p95 未达到 3 ms。

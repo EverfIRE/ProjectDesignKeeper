@@ -1,0 +1,25 @@
+# Godot/Jolt source audit
+
+Read on 2026-08-28. Scope: Godot 4.7.2-stable and versioned 4.7 documentation are a dated source snapshot, not a claim about an unknown project build, export template, settings/defaults, extension, or platform behavior. Every applied answer retains the project-version gate. The corrected core links below are controller-verified official URLs; this audit does not claim a new network fetch.
+
+| Official source | Claim | Limitation retained |
+| --- | --- | --- |
+| [4.7.2 archive](https://godotengine.org/download/archive/4.7.2-stable/) | Records the stable archive/version anchor. | Does not identify a local editor, commit, export template, or project. |
+| [4.7.2 release record](https://godotengine.org/article/maintenance-release-godot-4-7-2/) | Records the 4.7.2-stable maintenance release. | Release notes are not API/default evidence for another build. |
+| [Godot 4.7 release](https://godotengine.org/releases/4.7/) | Records the 4.7 release family context. | Patch changes and project selection still require exact-build confirmation. |
+| [Using Jolt Physics](https://docs.godotengine.org/en/4.7/tutorials/physics/using_jolt_physics.html) | Built-in Jolt is a 3D physics engine; versioned usage/compatibility differences are documented. | It does not migrate 2D or guarantee a wrapper behavior without the project gate. |
+| [4.6 migration](https://docs.godotengine.org/en/4.7/tutorials/migrating/upgrading_to_godot_4.6.html) | Provides migration and breaking-setting context for a 4.6 upgrade. | It does not alone establish release-wide default selection; exact project settings remain inspected. |
+| [Godot 4.6 release](https://godotengine.org/releases/4.6/) | Records experimental removal and that Jolt is the default only for new 3D projects; existing projects unaffected until deliberate migration. | The release does not select a backend for an existing project or prove its export/build compatibility. |
+| [Physics introduction](https://docs.godotengine.org/en/4.7/tutorials/physics/physics_introduction.html) | Separates body roles and documents physics non-determinism. | No cross-platform replay or lockstep guarantee follows from it. |
+| [CharacterBody guidance](https://docs.godotengine.org/en/4.7/tutorials/physics/using_character_body_2d.html) | CharacterBody movement API/lifecycle guidance applies to the corresponding 2D/3D nodes. | Exact gameplay controller policy remains project-specific. |
+| [CharacterBody3D API](https://docs.godotengine.org/en/4.7/classes/class_characterbody3d.html) | `velocity`, `move_and_slide()`, and `move_and_collide()` have distinct contracts. | Symbols/default values must match the frozen engine build. |
+| [Idle and physics processing](https://docs.godotengine.org/en/4.7/tutorials/scripting/idle_and_physics_processing.html) | `_process` and `_physics_process` run at different cadences. | This alone does not design authority, input, or substep policy. |
+| [Physics interpolation introduction](https://docs.godotengine.org/en/4.7/tutorials/physics/interpolation/physics_interpolation_introduction.html) | Interpolation is rendering/presentation support. | It does not fix collision, replay, or determinism. |
+| [Physics interpolation usage/reset](https://docs.godotengine.org/en/4.7/tutorials/physics/interpolation/using_physics_interpolation.html) | Documents versioned interpolation usage and reset paths. | Exact calls/settings remain frozen-build-gated. |
+| [`PhysicsServer2D`](https://docs.godotengine.org/en/4.7/classes/class_physicsserver2d.html) | 2D low-level server/world interface is distinct. | It is not evidence for a user-invented manual SceneTree step. |
+| [`PhysicsServer3D`](https://docs.godotengine.org/en/4.7/classes/class_physicsserver3d.html) | 3D low-level server/world interface is distinct. | It is not evidence for double stepping or unsupported ownership. |
+| [`Performance`](https://docs.godotengine.org/en/4.7/classes/class_performance.html) | Versioned performance monitors can be queried. | Available monitor names and interpretation require target-build confirmation. |
+| [Debugger panel/Profiler](https://docs.godotengine.org/en/4.7/tutorials/scripting/debug/debugger_panel.html) | Profiler is the standard capture surface; Visual Profiler excludes scripting/physics. | Editor observation cannot replace matched release/server target captures. |
+| [Release policy](https://docs.godotengine.org/en/4.7/about/release_policy.html) | Records the versioned release-policy source boundary. | It does not establish backend determinism or a project's selected build. |
+| [3-to-4 migration](https://docs.godotengine.org/en/4.7/tutorials/migrating/upgrading_to_godot_4.html) | Godot 3 recipes are migration inputs, not current Godot 4 API authority. | Migration must compile and run in the frozen project. |
+| [jrouwe/JoltPhysics](https://github.com/jrouwe/JoltPhysics) | Official upstream owns native library architecture/API/build information. | Upstream guarantees must not be projected onto Godot's wrapper or platform build. |

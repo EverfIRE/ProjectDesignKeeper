@@ -1,0 +1,154 @@
+现有两组数字不能用来支持任何“快 2 倍”或“同等预算质量更好”的结论：GPU、操作系统、分辨率、步频、粒子数、场景、渲染器和测量协议均同时改变。它们最多只能作为待复现实验的线索。下面的方案把结论拆成可证伪的比较，并在 6 GPU-hours 内优先产出 go/no-go 所需证据。
+
+先冻结下列决策输入；在它们未被提供或确认前，只能报告 Pareto 数据，不能写论文中的强结论。
+
+- 可用的共同 GPU、其数量、操作系统、驱动、CUDA/图形 API 版本、功耗/时钟策略；两方法必须在同一台机器、同一软件环境中各跑一次。若无法做到，不能作硬件无关的速度主张。
+- 目标实时档位（端到端帧预算、物理步频和输出分辨率）以及论文所说“质量”的主指标、方向和允许误差。题目给出的 60/120 Hz 和 1080p/1440p 是历史条件，不把它们擅自当作目标；可将其作为两个待评估档位。
+- CityFlood 与 DamBreak 的公开/内部场景资产、初始条件、边界条件、材质、相机和许可；若任一方法不能运行某场景，应记录为不适用，而不是用另一场景替换。
+- 参考解或已批准的验收真值、质量容差和决策置信规则。没有参考解时，固定质量只能按预注册的代理质量指标比较，必须在论文中说明其局限。
+
+实验设计
+
+1. 建立一个只读的“共同评测清单”，为每个场景保存哈希：场景版本、单位、网格/边界、初态、粒子播种规则、相机、输出分辨率、随机种子、固定模拟时长和保存帧。将两个场景都纳入主结果；不要把 CityFlood 对 DamBreak 的数字相减或相除。对所有粒子数/步频档位使用同一物理时间和同一输出时刻。
+
+2. 锁定两个可执行物：FlowX 的论文/发布版本和 FluidBase 的论文/发布版本，分别记录 commit、编译器、依赖、启动参数、精度模式和许可证。禁止在主比较中只给一方使用更快的渲染器、混合精度或预计算。运行两条轨迹：
+   - physics-only：只测推进到下一个输出状态；渲染、文件 I/O、首帧资源创建和异步下载均排除，但同步必须包含。
+   - end-to-end：同一渲染器、同一相机、同一分辨率、同一输出格式下测物理加渲染；各组件同时单独打点。
+   若共同渲染器不可接入，则只报告 physics-only 的速度结论；端到端数据分列为各自系统数据，不作横向速度比较。
+
+3. 先做不超过 0.5 GPU-hour 的预检/剖析。验证两方法均能从相同初态完成短轨迹，时间戳单调，质量输出可读取，计时器分辨率足够，并测得每个候选任务的真实耗时。warm-up 不采用任意固定帧数：预检将每方法达到其已登记的稳态判据前的工作标为 warm-up；判据、实际 warm-up 数、着色器/JIT 状态都写入日志。若无法证明稳态或两方 warm-up 规则不等价，报告含/不含 warm-up 的两个成本，并停止端到端速度主张。
+
+4. 固定预算比较。在每个场景和每个已确认实时档位，以相同端到端预算 B 运行两方法；B 必须包括本档位定义的物理、同步和（仅在共同渲染器存在时）渲染。每次运行记录在 B 内实际完成的物理步数、输出帧数、主质量指标、所有代理质量指标、峰值显存、P50/P95/P99 帧时、超预算率及崩溃/NaN/发散。比较的是 Q_FlowX(B) 与 Q_FluidBase(B)，而非不同设备上的 FPS。
+
+5. 固定质量比较。先从共同质量指标和容差定义可接受集合 A；在每个场景上寻找每个方法满足 A 的最低资源点（粒子数、子步数、迭代数、分辨率等只允许调该方法公开的质量旋钮，并完整记录）。对每个方法扫出“资源—质量”曲线，采用相同的停止/插值规则。比较达到同一质量目标 Q* 的端到端中位时间 T：速度比为 T_FluidBase(Q*) / T_FlowX(Q*)。只有在同场景、同设备、同测量模式、同 Q* 下，且预注册的下置信界仍不小于 2，才可写“FlowX 在同等质量下快 2 倍”。否则写实际估计值和区间，或写“证据不足”。
+
+质量、稳定性和实时适用性
+
+主质量指标应由场景/应用负责人在运行前选择，优先使用参考状态上的质量守恒误差、液面/自由表面距离、速度场误差、湿润前沿位置误差和关键探针时间序列误差。渲染图像误差仅为辅助项，必须在共同渲染器、固定相机和固定曝光下计算。报告每个指标的原始值、归一化方式、单位、容差、每场景结果及跨场景汇总方式；不以单一平均值掩盖某一场景退化。
+
+稳定性单独判定：相同种子和配置重复执行的数值/图像哈希或允许数值差、NaN/Inf、质量漂移、能量/质量异常、发散、恢复次数、显存不足和超预算帧都必须记录。实时适用性不是平均 FPS：以已确认的目标步频/预算，报告 P50/P95/P99、最坏帧、超预算比例、连续超预算段、启动和 warm-up 成本。没有已提供的可接受阈值时，这些是风险证据，不能被擅自判为 pass/fail。
+
+随机性、重复与统计
+
+使用三个预先公布的共同种子；每种子独立生成初态并同时用于两方法。每个“方法 × 场景 × 操作点 × 种子”至少做两次计时重复，运行顺序按种子配对交错（例如 A/B/B/A），避免温度、缓存和后台负载偏向一方。若程序声明完全确定性，第二次仍保留为平台/计时重复；若不确定性更强，则将额外种子优先于同种子重跑。对配对差和速度比用预注册的区间估计方法，原始 trace 一并交付。置信水平、质量容差、显著性/效应界和多场景汇总规则均为决策输入，留空即阻止强结论，不能在看结果后补选。
+
+消融
+
+只对 FlowX 做机制消融，并不把消融版本冒充基线：依次关闭/替换其可微求导路径、关键加速结构、近似/降阶、缓存或预计算、混合精度（仅当该开关存在且不会改变问题定义）。每项在至少一个共同场景、同一预算和同一质量点上重跑，显示性能—质量—稳定性变化。FluidBase 仅运行其公开、默认、可复现配置；若它有等价的公开质量旋钮，可额外给出灵敏度曲线，不能为追平结果做未披露调参。
+
+6 GPU-hour 执行账本与停止条件
+
+分配 0.5 GPU-hour 预检、4.0 GPU-hours 主比较、1.0 GPU-hour FlowX 消融、0.5 GPU-hour 用于失败复现/日志导出。预检后以实测单任务成本排队，绝不超过每个桶的硬上限；若三种子、两次重复、两个场景和所需操作点无法放入 4.0 GPU-hours，则缩减操作点数量（保留两个场景和配对种子），而非减少可比性或偷偷改场景。固定预算与固定质量可复用同一条已保存的资源—质量轨迹，避免双倍运行。CPU 后处理不计入 GPU-hours，但应在 48 小时内安排并记录。
+
+立即停止并给出 no-go/“不可比较”而非补造结论的条件是：共同硬件/运行环境不可获得；任一方法不能在同一规范下运行两个场景；没有预先确定的质量目标或容差；共同渲染器缺失却仍试图作端到端速度比较；预检发现计时/同步不可信；任何核心运行出现未解释的 NaN、发散、OOM 或不可复现；预算不足以完成最低配对矩阵；或“2 倍”速度比的预注册下置信界未达到 2。若固定预算的主质量差没有越过预注册的容差/效应界，也不得写“质量更好”。
+
+可交给工具校验的 JSON experiment-plan 如下。null 表示必须由负责人填写；校验器应拒绝执行或拒绝生成强结论，不能以默认值替代。
+
+```json
+{
+  "schema_version": "1.0",
+  "study_id": "flowx-vs-fluidbase-comparable-evaluation",
+  "claim_status_before_execution": "unsupported_due_to_noncomparable_historical_results",
+  "required_inputs": {
+    "common_hardware": null,
+    "common_software_environment": null,
+    "target_realtime_profiles": null,
+    "quality_primary_metric": null,
+    "quality_reference_or_approved_proxy": null,
+    "quality_tolerances": null,
+    "decision_confidence_rule": null,
+    "scene_assets_and_versions": null
+  },
+  "methods": [
+    {"id": "flowx", "role": "candidate", "version": null, "commit": null, "public_quality_knobs": null},
+    {"id": "fluidbase", "role": "baseline", "version": null, "commit": null, "public_quality_knobs": null}
+  ],
+  "scenes": [
+    {"id": "CityFlood", "asset_version": null, "initial_conditions_hash": null, "boundary_conditions_hash": null},
+    {"id": "DamBreak", "asset_version": null, "initial_conditions_hash": null, "boundary_conditions_hash": null}
+  ],
+  "comparability": {
+    "same_machine_required_for_speed_claim": true,
+    "same_os_driver_runtime_required": true,
+    "same_scene_initial_conditions_seeds_and_output_times_required": true,
+    "same_renderer_required_for_end_to_end_speed_claim": true,
+    "measurement_modes": ["physics_only", "end_to_end"],
+    "renderer_if_end_to_end": null,
+    "historical_5090_vs_4090_numbers_allowed_as_primary_evidence": false
+  },
+  "protocol": {
+    "preflight_gpu_hour_cap": 0.5,
+    "warmup_rule": "pre_registered_steady_state_criterion; log excluded work; no implicit frame-count default",
+    "timing": {
+      "clock": "monotonic_host_clock_with_required_gpu_synchronization",
+      "exclude": ["asset_download", "first_run_compilation", "file_io"],
+      "include_physics_only": ["physics", "required_synchronization"],
+      "include_end_to_end": ["physics", "required_synchronization", "common_renderer"],
+      "report": ["component_times", "p50", "p95", "p99", "max", "over_budget_rate", "peak_vram"]
+    },
+    "seeds": {"count": 3, "values": "pre_publish_three_common_seeds", "paired_across_methods": true},
+    "timing_repetitions_per_seed": 2,
+    "run_order": "paired_interleaved_ABBA",
+    "budget_guard": "measure_job_cost_in_preflight; queue only jobs fitting_bucket_cap"
+  },
+  "comparisons": {
+    "fixed_budget": {
+      "budgets": "required_inputs.target_realtime_profiles",
+      "outcome": "quality_at_equal_budget",
+      "record": ["completed_steps", "completed_output_frames", "quality_metrics", "stability_events", "latency_quantiles"]
+    },
+    "fixed_quality": {
+      "quality_targets": "derived_only_from_required_inputs.quality_primary_metric_and_quality_tolerances",
+      "procedure": "trace_pre_registered_resource_quality_curve_then_find_minimum_acceptable_resource",
+      "speed_ratio": "T_fluidbase_at_Q_star / T_flowx_at_Q_star",
+      "two_x_claim_gate": "same_scene_same_machine_same_mode_same_Q_star_and_pre_registered_lower_confidence_bound_greater_than_or_equal_to_2"
+    }
+  },
+  "quality_metrics": {
+    "primary": "required_input",
+    "preferred_reference_metrics": ["mass_conservation_error", "free_surface_distance", "velocity_field_error", "wet_front_error", "probe_time_series_error"],
+    "auxiliary_visual_metrics": "only_with_common_renderer_camera_and_exposure",
+    "report_per_scene_not_only_aggregate": true
+  },
+  "stability_metrics": ["determinism_or_allowed_delta", "nan_inf", "divergence", "mass_energy_drift", "recovery_count", "out_of_memory", "over_budget_frames", "longest_over_budget_streak"],
+  "ablations": {
+    "method": "flowx_only",
+    "candidate_switches": ["differentiable_path", "acceleration_structure", "approximation_or_reduction", "cache_or_precompute", "mixed_precision"],
+    "rule": "run_only_existing_documented_switches; disclose_unavailable_switches; never_present_as_baseline"
+  },
+  "gpu_hour_budget": {
+    "total": 6.0,
+    "preflight": 0.5,
+    "core_comparison": 4.0,
+    "ablations": 1.0,
+    "rerun_and_log_export": 0.5,
+    "priority_if_insufficient": ["retain_both_scenes", "retain_paired_three_seeds", "reduce_operating_points", "do_not_substitute_scenes_or_hardware"]
+  },
+  "stop_conditions": [
+    "missing_required_input",
+    "no_common_machine_or_software_environment_for_speed_claim",
+    "method_cannot_run_a_scene_under_common_specification",
+    "no_common_renderer_for_requested_end_to_end_comparison",
+    "untrusted_timing_or_synchronization",
+    "unexplained_nan_divergence_oom_or_nonreproducibility",
+    "minimum_paired_matrix_does_not_fit_gpu_hour_cap",
+    "two_x_lower_bound_below_2",
+    "fixed_budget_quality_difference_within_pre_registered_tolerance"
+  ],
+  "allowed_conclusions": {
+    "two_x_speed": "only_if_fixed_quality.two_x_claim_gate_passes",
+    "better_quality_at_equal_budget": "only_if_fixed_budget_primary_metric_exceeds_pre_registered_effect_gate",
+    "otherwise": "report_per_scene_paired_estimates_intervals_and_no_strong_claim"
+  },
+  "validator_rules": [
+    "reject_if_any_required_inputs_value_is_null",
+    "reject_end_to_end_speed_claim_if_renderer_if_end_to_end_is_null",
+    "reject_speed_claim_if_machine_or_software_hash_differs_between_methods",
+    "reject_if_scene_or_initial_condition_hash_differs_within_a_paired_comparison",
+    "reject_if_seed_count_is_not_3_or_timing_repetitions_per_seed_is_less_than_2",
+    "reject_if_gpu_hour_bucket_sum_exceeds_total",
+    "reject_two_x_claim_unless_recorded_lower_bound_is_at_least_2",
+    "reject_better_quality_claim_without_primary_metric_tolerance_and_effect_gate"
+  ]
+}
+```

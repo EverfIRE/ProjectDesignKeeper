@@ -1,0 +1,6 @@
+interface:
+  display_name: "Box2D Physics"
+  short_description: "Pin Box2D 3.x adapter and replay boundaries"
+  default_prompt: "Use $box2d-physics to review this Box2D 3.x integration against stable API, lifetime, stepping, collision, and determinism contracts."
+policy:
+  allow_implicit_invocation: true

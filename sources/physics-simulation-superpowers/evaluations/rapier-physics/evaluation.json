@@ -1,0 +1,89 @@
+{
+  "schema_version": "2",
+  "skill": "rapier-physics",
+  "skill_name": "Rapier Physics",
+  "scenario": "tests/fixtures/rapier-physics-scenario.txt",
+  "baseline": {
+    "response": "tests/fixtures/rapier-physics-baseline-response.txt",
+    "observations": "The frozen baseline misses source identity, package and feature boundaries, restore ownership, query/event/controller lifetimes, validation coverage, and deterministic input generation."
+  },
+  "enabled": {
+    "response": "tests/fixtures/rapier-physics-enabled-response.txt",
+    "observations": "The sanitized enabled fixture clears all eight admitted-source gates and retains explicit unavailable-guarantee boundaries."
+  },
+  "verdict": "pass",
+  "evidence": [
+    "tests/fixtures/rapier-physics-enabled-attempt-1-response.txt",
+    "tests/fixtures/rapier-physics-enabled-attempt-2-response.txt",
+    "tests/fixtures/rapier-physics-enabled-response.txt",
+    "references/rapier-physics-source-audit.md",
+    "references/sources.lock.json"
+  ],
+  "gate_evidence": {
+    "baseline_violations": [
+      "input-generation-determinism",
+      "js-package-flavor",
+      "query-event-controller",
+      "restore-memory-boundary",
+      "rust-feature-matrix",
+      "snapshot-boundary",
+      "source-snapshot",
+      "validation-matrix"
+    ],
+    "attempt_1_violations": [
+      "input-generation-determinism",
+      "restore-memory-boundary"
+    ],
+    "enabled_violations": [],
+    "source_governance_review": "Unknown-license candidates are excluded; no rejected claim or measurement is adopted."
+  },
+  "hashes": {
+    "scenario_sha256": "b9cf74b1c3676cdfcc954b87a62eeebd1d31f8c372fcfc7d9c69b0a3d6e5e635",
+    "baseline_response_sha256": "dd9e421d742a02e2e03cb4bf2ed08084660503d83d7f6684453ed3545d2a6055",
+    "enabled_attempt_1_sha256": "5ecb94fc161f32737314ff85f076ac43d9395ade13721830164446736da39c64",
+    "enabled_attempt_2_sha256": "7db7fc08ceed2701d92fd533d3d4353e0ca363b890dd6d985e0967c7f776d39a",
+    "enabled_response_sha256": "7db7fc08ceed2701d92fd533d3d4353e0ca363b890dd6d985e0967c7f776d39a"
+  },
+  "isolation_provenance": {
+    "fresh_isolated_evaluator": true,
+    "source_snapshot": {
+      "git_commit": "b43cf33bf315300bd09c88d69a2693ddd964d0b6",
+      "path": "tests/fixtures/rapier-physics-enabled-attempt-2-response.txt",
+      "bytes": 11805,
+      "sha256": "e6c28fc9068e4a488a2d00d0afad622ad699ac61bc502a1094f6527ce59e7eb6",
+      "archival_copy": ".superpowers/sdd/2026-08-26-physics-simulation-superpowers/task-22-enabled-attempt-2-exact.txt",
+      "archival_copy_packaged": false
+    },
+    "sanitized_after_source_governance_review": true,
+    "copied_byte_for_byte": false,
+    "transformation": {
+      "id": "remove-rejected-community-claim-block-v1",
+      "reason": "Remove claims derived only from a rejected unknown-license candidate while retaining the source-independent repeated-restore memory acceptance boundary.",
+      "operations": [
+        {
+          "op": "delete_lines",
+          "start": 48,
+          "end": 59
+        },
+        {
+          "op": "replace_exact",
+          "from": "5. **Use application IDs on the network.**",
+          "to": "4. **Use application IDs on the network.**",
+          "count": 1
+        },
+        {
+          "op": "replace_exact",
+          "from": "6. **Reject incompatible snapshots before decoding.**",
+          "to": "5. **Reject incompatible snapshots before decoding.**",
+          "count": 1
+        }
+      ]
+    },
+    "allowed_inputs": [
+      "scenario",
+      "SKILL.md",
+      "references/rapier.md",
+      "agents/openai.yaml"
+    ]
+  }
+}

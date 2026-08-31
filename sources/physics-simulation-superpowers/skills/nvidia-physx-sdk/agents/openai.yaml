@@ -1,0 +1,6 @@
+interface:
+  display_name: "NVIDIA PhysX SDK"
+  short_description: "Gate native PhysX C++ integration evidence"
+  default_prompt: "Use $nvidia-physx-sdk to produce a pinned, source-grounded native PhysX integration and validation plan."
+policy:
+  allow_implicit_invocation: true

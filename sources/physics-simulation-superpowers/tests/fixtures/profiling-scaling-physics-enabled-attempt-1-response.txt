@@ -1,0 +1,33 @@
+## Budget and capture contract
+
+不能把 120 FPS 对 138 FPS 解读为“物理快 15%”，更不能据此合并。FPS 是端到端倒数指标，且两次录制的相机、分辨率、VSync、热身、时长、种子、网络和后台均不一致；它既不能归因到 physics，也不能说明尾延迟、固定 60 Hz tick 截止或正确性。
+
+先冻结并版本化一次捕获清单，未知项均为阻塞项：客户端/服务器权威边界；目标 CPU、GPU、核心数、功耗与温度模式；OS、驱动、编译器、build、后端和版本；60 Hz tick、accumulator 与 backlog；相机、分辨率、VSync、帧率上限；场景、资产、种子和有序输入；RTT/jitter/loss、rollback 历史；线程、job、亲和性；内存与 physics 预算；热身、采样时长、重复次数及置信规则；场景容量、允许误差和质量限制。
+
+对 A、B 在同一清单下录制，分别采集 physics CPU/GPU wall-clock 毫秒的 p50/p95/p99、最大值、deadline miss、超预算时间/面积、tick backlog 和 resimulation debt，而非只看平均 FPS。每 tick 记录 active/sleeping body 与 shape、broadphase move/pair、narrowphase pair/manifold/contact point、island、constraint row/iteration、CCD candidate/TOI、query 的类型/次数/hit/candidate、回调、spawn/despawn、rollback 深度与重算 tick、分配及峰值/工作集内存、CPU/GPU 阶段时间。
+
+同时采集每线程/核心 timeline、job queue/wait/steal/synchronization/idle、关键路径；GPU timestamp、队列占用、传输、CPU↔GPU 同步、异步重叠和测量开销。服务器的硬门槛是固定 60 Hz 下 physics CPU p95 ≤ 3 ms；当前 5.1 ms 仅是条件不完整的基线候选，必须重测。客户端 60 FPS 不是 physics 子预算：在声明客户端 CPU/GPU、内存、尾延迟和容量预算前，不能判定客户端通过。
+
+## Attribution and scaling
+
+先按粗粒度拆分并定位关键路径：input/restore、broadphase、narrowphase/contact generation、island build、constraint solve、integrate/CCD、query/callback、serialization/hash；再深入最大的关键路径阶段。将时间与计数器相关联，并按 body、pair、contact、constraint row、query、resimulated tick 归一化；一次只改变一个因素。相关性或 FPS 改善都不是因果证明。
+
+建立独立轴的容量 sweep：awake body 数、broadphase churn、contact 密度与 manifold point、island 大小/数量、constraint row 与条件数、CCD 负载、query mix、spawn/despawn、rollback/resimulation、线程数和目标硬件。至少覆盖静止/睡眠、箱体 pile avalanche、关节链/马达、50 个高速 CCD swarm、query storm、streaming churn、网络历史边界；对最坏场景的 500 个可唤醒箱子也做单独扫测。输出每轴的斜率、拐点、饱和/负载不均与 p95/p99 行为，不外推未测容量。
+
+将减半 solver iteration、关闭 CCD、远处 body 每 4 tick 更新、GPU 化均作为尚未证实的单变量实验，而不是组合改动。每个实验必须使用相同 manifest、相同输入和相同正确性检查，并给出 old/new 分布、计数器与关键路径归因。GPU 碰撞/solver 只能作为端到端候选：测量 upload/readback、排队、同步、延迟、CPU-GPU 重叠、small-workload crossover、显存、determinism、权威与 fallback，并覆盖 rollback/resimulation 的正确性矩阵；不得把 CPU 时间迁移到 GPU 或同步等待后仍称为胜利。
+
+## Reversible quality tiers
+
+先完成基线归因，再将 authoritative gameplay physics 与 cosmetic/secondary physics 明确分离。固定 60 Hz 的权威碰撞、solver、CCD、网络状态恢复和事件语义不得因 FPS 自动降级、静默裁剪或丢弃。sleep、cull、LOD、低频更新只可用于声明为非权威的工作，且其 cap/fallback 必须确定性、可观察。
+
+每个质量层级应声明：适用工作负载；保护的不变量与允许误差；独立测得的进入/退出信号和阈值；滞回与最短驻留时间；有界的过渡工作；状态映射及守恒要求；网络权威/事件语义；rollback 处理；遥测字段和确定性 fallback。不得按逐帧 FPS 开关；阈值应基于 physics CPU/GPU 时间、deadline miss、backlog、resimulation debt 和容量计数器，而非平均 FPS。
+
+iteration、CCD 和更新频率的具体层级、阈值和滞回，在完成误差—成本曲线、故障注入和负载 sweep 前均未知。下调后必须验证接触稳定性、穿透/隧穿、关节误差、能量/动量约束、query 结果、hash/restore、一致的权威状态与网络事件；上调后必须能无损恢复。切换应可记录、可回放、不可振荡，并限制单次过渡造成的工作尖峰。
+
+## Acceptance
+
+合并门槛为：A/B 使用匹配的捕获清单；提供旧/新 physics CPU 与 GPU p50/p95/p99、最大值、miss、backlog、debt 和容量计数器；指出已被证实的瓶颈及关键路径；通过完全相同的正确性、不变量和网络结果；证明没有隐藏的 CPU↔GPU 或阶段间工作迁移。
+
+服务器必须在声明的最坏场景矩阵、目标硬件及固定 60 Hz 下满足 physics CPU p95 ≤ 3 ms。客户端必须先声明 physics CPU/GPU 子预算、内存、尾延迟和容量预算，再在同一矩阵下验收。所有层级转换须在最坏负载和 rollback/resimulation 下稳定、可逆、无振荡，并通过内存与容量门槛。
+
+仅有平均 FPS、未归因的改善、牺牲正确性的优化、自动振荡、统计不充分的胜利均拒绝。出现非有限状态、权威或 restore 损坏、缺少必要仪表、丢弃权威工作、不安全的 cap/budget breach 或不兼容捕获时立即停止，不得合并。

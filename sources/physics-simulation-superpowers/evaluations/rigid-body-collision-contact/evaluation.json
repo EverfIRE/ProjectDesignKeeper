@@ -1,0 +1,20 @@
+{
+  "skill": "rigid-body-collision-contact",
+  "scenario": "固定 60 Hz、1 单位=1 米。200 m/s 的小弹丸会偶发穿过 0.1 m 墙体，同时 20 个箱子堆叠一直抖。CPU 物理预算 2 ms。是不是给所有动态刚体都开 CCD，再把求解器迭代直接拉到 32 就行？请给修复方案。",
+  "baseline": {
+    "response": "不建议全开 CCD、全局 32 次迭代：2 ms 预算下通常会显著超支，也无法根治堆叠抖动。\n\n- 弹丸：200 m/s、60 Hz 时每帧约移动 3.33 m，必须对这类高速、小尺寸物体用连续碰撞。优先启用 sweep-based CCD，或把弹丸改成射线/形状投射命中判定；限定在子弹层与可命中静态/动态层，命中后停止或销毁。\n- 墙体：确认碰撞体厚度、接触偏移和单位比例正确；静态墙用简单凸体/盒体，避免薄三角网格作为唯一碰撞面。必要时给弹丸设最小碰撞半径或使用 capsule/sphere cast。\n- 箱子堆叠：只提高相关对象的速度/位置迭代，例如 8–12 次，而不是全局 32；启用休眠，降低反弹，合理摩擦；限制最大去穿透速度，适当提高接触偏移/稳定阈值。\n- 时间步：保持固定 60 Hz；仅在高速弹丸存在时做局部子步进或 CCD，不要全场子步。限制每帧物理补帧数，避免帧率下降时雪崩。\n- 性能：用碰撞层、空间查询和简单碰撞体缩小 CCD 候选集；先 profile 确认 CCD broadphase、接触对和 solver 是否占用预算。\n\n核心是“高速弹丸走连续查询/局部 CCD，静态堆叠靠接触稳定性与适量迭代”，而不是对所有动态刚体暴力加质量。",
+    "observations": "It rejects blanket CCD and global 32 iterations and computes 3.33 m, but changes settings before seeded minimal A/B evidence. It omits manifold lifetime, inertia/mass-ratio and solver-residual evidence, percentile acceptance, explicit CCD limitations, and the full 2/20-box ladder."
+  },
+  "enabled": {
+    "response": "Diagnosis\n\n不是。200 m/s 在 60 Hz 下每步移动 **3.33 m**，远大于 0.1 m 墙体；这是高速穿透问题，应对小弹丸—墙体这一对碰撞做定向 CCD/TOI 或 sweep，而非全局开启 CCD。20 箱抖动是堆叠接触稳定性问题，CCD 不能修复它。\n\n先固定随机种子、初始状态和 fixed step，依次检查：碰撞层过滤、墙体真实碰撞厚度/单位、宽相候选、TOI/接触流形持久性、弹性/摩擦合并、穿透恢复、质量/惯量比、睡眠与岛屿、求解残差，以及 NaN/无效数值。也确认弹丸是否其实适合用射线/形状查询命中，而不是模拟刚体。\n\nMinimal experiments\n\n- 1 弹丸 + 1 墙：相同种子、几何与初态，A/B 比较离散碰撞和“仅弹丸层 × 墙体层”CCD；记录漏击数、首次失败 tick、最大穿透、接触/流形数及生命周期、p50/p95/p99 CPU。\n- 堆叠：分别跑 2 箱与 20 箱；记录最大约束/接触误差、静置后最大线/角速度、活跃/睡眠刚体数、接触流形生命周期和 p50/p95/p99 CPU。\n- 迭代次数只在上述基线测得后，对堆叠相关岛屿做小范围 A/B；不可直接全局拉到 32。\n\nScoped change\n\n- 若弹丸是命中检测为主：采用射线或形状 sweep，并在命中时处理伤害/冲量；明确初始重叠、多次命中、动态目标和旋转的规则。\n- 若必须物理模拟：仅为高速小弹丸与薄墙对应层启用 sweep/TOI/speculative CCD，限制适用速度与碰撞对；不要给所有动态刚体开启。\n- 堆叠：使用简单、受支持的凸碰撞体；校准 1 单位=1 米下的质量、重心和惯量，避免极端质量比；将弹性设为零或受控；启用持久接触流形、受限穿透恢复、睡眠和岛屿遥测。仅在证据表明约束残差不足时，增加堆叠岛屿所需的求解工作；不要用阻尼单独掩盖不稳定。\n- 若 p95 超过 2 ms，优先收紧 CCD 层/候选对、简化碰撞形状和改善睡眠；回滚任何使 p95 超过 2 ms 或未消除测试包络内漏击的改动。\n\nAcceptance\n\n- 测试包络内：弹丸漏击数为 **0**。\n- 明确声明项目允许的最大穿透和静置抖动阈值；当前未提供则保持 unknown。\n- p95 physics CPU **≤ 2 ms**，同时报告 p50/p99。\n- 提供离散与定向 CCD 的 A/B 证据、最终 scoped change、仍存限制（初始重叠、旋转、多次撞击、动态目标）及上述回滚条件。",
+    "observations": "It gives two diagnoses, calculates 3.33 m travel, uses seeded A/B ladders, collects the complete contact and stack metric set, scopes CCD/query and stack remedies, and accepts zero misses with unknown penetration/jitter tolerances plus a 2 ms p95 rollback boundary."
+  },
+  "verdict": "pass",
+  "evidence": [
+    "The controller-captured pre-authoring baseline is preserved verbatim for comparison; its provenance is recorded here, not inferred from the tests.",
+    "The enabled response distinguishes high-speed tunneling from stack-contact instability, computes 200 m/s at 60 Hz as 3.33 m per step, and does not claim CCD fixes jitter.",
+    "It requires seeded one-projectile/one-wall and 2/20-box A/B scenes with missed-hit, first-failed-tick, manifold lifetime, penetration, error, residual-speed, activity, and percentile-CPU evidence.",
+    "It scopes sweep/TOI/speculative CCD to fast projectile-wall layers or uses a query projectile, keeps stack changes evidence-led, and rejects global CCD or an immediate global 32-iteration change.",
+    "Acceptance sets zero misses in the tested envelope, retains unknown project-specific penetration/jitter tolerances, requires p95 physics CPU at or below 2 ms, and supplies a rollback condition."
+  ]
+}

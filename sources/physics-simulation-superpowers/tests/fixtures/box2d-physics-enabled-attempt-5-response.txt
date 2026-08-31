@@ -1,0 +1,68 @@
+## Source snapshot and drift
+
+Box2D v3.1.1 was released on 2025-06-04 at commit 8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3. The release says there was no documentation update: website Doxygen 3.1.0 remains stale, so the v3.1.1 tagged public headers are the final API authority. Current main commit 617d32ab02570930625bbcb8479f54be9bf8d045 labels 3.2.0 and contains experimental snapshot, recording, and state-hash APIs; these are outside stable 3.1.1 and must not leak into 3.1.1 code.
+
+## IDs, ownership, and mutation
+
+Initialize definitions with b2DefaultWorldDef, b2DefaultBodyDef, b2DefaultShapeDef, and b2DefaultChainDef. Opaque C IDs are generational and validity checks cover up to 64K allocations, so durable application IDs own identity. Destroying a world destroys its objects; destroying a body destroys attached shapes and joints; a chain owns segment shape IDs, which are invalidated with the chain. b2DestroyShape's updateBodyMass choice and b2Body_ApplyMassFromShapes define mass recompute; sensor shapes may have mass and a shape cannot start or stop being a sensor. Use no 2.4 fixtures, pointers, or contact listeners.
+
+## Fixed step and task phase
+
+Use fixed dt; select substeps from measured stability and cost, then freeze the substep count, with events consumed after each main step. workerCount requires enqueueTask and finishTask. b2World_Step locks the world; callbacks and worker tasks are thread-safe and perform no world mutation. Adapter policy permits no world reads during the step either, and confines read-only queries to an outside-step phase.
+
+## Events and sensors
+
+Body events, sensor events, and contact events are opt-in where applicable and default off; drain these borrowed arrays after every step. End touch events can contain destroyed IDs, so call b2Shape_IsValid only as an assertion aid, translate/copy to stable application IDs, and never queue raw elements. Sensors can detect other sensors; engine event order is not gameplay semantic order, so canonicalize a persistent gameplay overlap set.
+
+## Queries and tree semantics
+
+OverlapAABB is an approximate broadphase bounding-box candidate query; use OverlapShape or another narrow-phase exact test. Ray-cast and shape-cast callbacks arrive in arbitrary order, so collect multiple hits and sort by fraction plus durable identity. In v3.1.1 an initial overlap reports zero fraction, zero normal, and an arbitrary point; handle it explicitly and consume results immediately with no persistence.
+
+## One-way PreSolve
+
+Set enablePreSolveEvents and use b2PreSolveFcn before collision resolution. Contacts re-enable, so re-disable every step. The callback runs in a parallel-for/worker thread, must be thread-safe, must not read or write the world, and disabling after the step is too late. Stable v3.1.1 documents a high-speed limitation that may pause; keep the Platformer sample as a test seed and add project cases.
+
+## Experimental character mover
+
+The stable 3.1.1 experimental mover is a geometric capsule outside world ownership, not a body. Call b2World_CollideMover and b2World_CastMover, assemble collision planes, run b2SolvePlanes for translation, then b2ClipVector for velocity. It is not a complete controller: gameplay owns steps, slopes, persistent state, pushing, rotation, support, and replication policy.
+
+## CCD boundary
+
+Default CCD covers dynamic bodies versus static bodies. Bullet mode extends a sparse tested body to static, kinematic, and dynamic targets but not other bullets; use it sparingly because it may interfere with joints. Sensors have no CCD. Continuous-collision contact events can appear on the next step, so gameplay must not require same-step delivery.
+
+## Determinism is not rollback
+
+The official cross-platform claim is for 64-bit targets and creation-order-derived simulation/events: precise FP on MSVC, floating-point contraction disabled on Clang/GCC, tested on x64 and ARM. The pinned determinism test uses 1/60, 4 substeps, worker counts 1-5, expected sleep step 288, and hash 0x35467e1e; application determinism is still required, so this is not proof. Stable v3.1.1 has no public snapshot and no rollback support; transforms are insufficient, there is no cross-version guarantee, and only the pinned exact build plus complete replay can be qualified.
+
+## Recommended implementation
+
+**Adapter policy:** Vendor or build only the pinned commit. Record source-tree, public-header, library, and adapter hashes for each Windows/Linux artifact, plus CMake options, compiler, architecture, floating-point flags, and task implementation. Reject the unrecorded binary. Add a compile/link probe using only the 3.x C API and fail if 2.4 fixtures, listeners, pointers, or `Step` signatures—or experimental 3.2 symbols—appear.
+
+Run simulation from a tick accumulator independent of the 48–240 Hz renderer, interpolate only for rendering, and quantize inputs and commands to ticks. Evaluate candidate fixed ticks and substeps—for example 60/90/120 Hz crossed with 1/2/4/8 substeps—and fixed worker counts. Select the lowest-cost cell satisfying character, joint, one-way, and projectile criteria within the 3 ms gate, record it, and freeze it. The official 1/60-and-4-substep lane is a seed, not the production answer. Define backlog handling without changing `dt` or substeps, and never replay captured render deltas.
+
+Keep Box2D IDs inside the adapter. Gameplay stores monotonically assigned application IDs; bidirectional mappings are invalidated at deterministic tick boundaries. Canonically order creation, mutation, and destruction commands, tombstone all body/world/chain cascades, and copy event data before processing later commands. Recreate a shape to change sensor status, and make mass recomputation explicit after density or shape changes.
+
+Choose the **solver-driven physical capsule** for this game: moving platforms, jointed lifts, pushing, and dynamic contacts already require physical interaction. Drive it with forces, impulses, or velocity policy; do not teleport it onto a ray hit. Classify support from accepted solver contacts using foot region, usable normal, relative velocity, and stable support identity, with hysteresis across contact churn. A ray or shape cast may anticipate ground or find recovery candidates, but “ray hit plus any contact” must not define grounding. Kinematic or dynamic platforms should carry the player through solver contact and support-relative motion; avoid adding a second teleport-based carry path.
+
+For one-way platforms, precompute immutable per-tick callback context containing the one-way normal, previous foot state, platform motion, relative approach, drop-through state, and application IDs. `b2PreSolveFcn` accepts or disables the contact before solving on every step. Test translating and rotating platforms, underside impacts, edge contacts, spawn overlap, drop-through, and fast crossings. If the high-speed envelope does not qualify, exclude it explicitly or use cast/controller handling rather than claiming reliable PreSolve behavior.
+
+Use sensor events only to maintain an application-owned overlap set keyed by stable IDs. Deduplicate begin/end transitions, tolerate destruction-generated end events, and canonicalize processing. Use shape casts for fast trigger crossings because sensors have no CCD.
+
+Enable bullet mode only on projectile classes whose measured speed/radius/thickness envelope requires dynamic-target CCD. Do not enable it on all moving or jointed bodies. Test static, kinematic, dynamic, and bullet targets separately; bullet-versus-bullet needs another policy. Compare bullet simulation with ray/shape-cast projectile policies, including shallow angles, moving targets, thin geometry, and acceptable one-step event latency.
+
+## Evidence and acceptance
+
+Capture per-tick and distribution data, not one average:
+
+- `b2World_Step` CPU p50/p95/p99/max, task enqueue/wait cost, worker utilization, Box2D profiles and solver counters.
+- Active/awake bodies, approximately 2,000-shape dense-scene load, contacts, sensor/contact/body-event counts, callback counts, queries, casts, and bullet counts.
+- Penetration, joint/lift drift, support-state transitions, duplicate landings, missed triggers, tunneling, and event latency.
+- A matrix over tick rate, substeps, worker count, compiler/platform, dense-scene load, projectile envelope, target type, platform motion, and renderer rate.
+
+Require the chosen budget statistic explicitly; for a hard 3 ms budget, every qualified worst-case tick must fit 3 ms, while a percentile budget must state its allowed outlier policy.
+
+Adversarial tests should include renderer changes from 48 to 240 Hz with identical simulation hashes, low-frame-rate catch-up, landing and edge departure, ceiling contacts, moving/rotating platforms, lifts and joint destruction, one-way underside/drop-through/spawn overlap/fast crossing, sensor-sensor overlaps, destruction-generated end events, chain cascades, arbitrary query order, cast initial-overlap results, and projectile sweeps across all declared collision pairs.
+
+For replay qualification, freeze the exact artifact and worker count, replay fixed-tick inputs plus the complete ordered creation/mutation/destruction history, and hash every tick using durable-ID-sorted gameplay and physics projections—not only player transforms. Compare worker-count lanes 1–5 and supported build/platform lanes, retaining the first divergent tick and a structured field diff. The same seed alone proves nothing; future Box2D versions and arbitrary builds require requalification, and transform-only restoration cannot implement rollback because hidden solver, contact, sleep, joint, and application state is missing.
+
+Route the general fixed-loop and ownership design to `architecting-real-time-physics`; contact, query, one-way, and CCD policy to `rigid-body-collision-contact`; lift joints to `constraints-ragdolls-active-physics`; controller comparison to `character-controller-movement`; replay and rollback compatibility to `networked-deterministic-physics`; adversarial reproduction to `debugging-testing-physics`; and the 3 ms scaling study to `profiling-scaling-physics`.

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Simulation Experiment Design / 仿真实验设计"
+  short_description: "Plan fair, falsifiable simulation comparisons"
+  default_prompt: "Use $designing-simulation-experiments to create a fair, resource-bounded experiment plan with a schema-valid JSON adapter."
+policy:
+  allow_implicit_invocation: true
