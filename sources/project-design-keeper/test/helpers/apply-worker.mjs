@@ -74,14 +74,36 @@ async function runApply() {
 
 async function runLease() {
   const layout = await prepareSecureCache({ cacheDirectory: configuration.cacheDirectory }, configuration.root);
+  let renewalAttempts = 0;
+  const holdFurtherRenewals = new Promise(() => undefined);
   return withProcessLease({
     layout,
     projectRoot: configuration.root,
     now: () => Date.now(),
     timeoutMs: configuration.timeoutMs,
-    leaseMs: configuration.leaseMs
-  }, async () => {
+    leaseMs: configuration.leaseMs,
+    ...(configuration.pauseAfterRenewal
+      ? {
+          beforeLeaseRenewal: async () => {
+            renewalAttempts += 1;
+            if (renewalAttempts > 1) await holdFurtherRenewals;
+          }
+        }
+      : {})
+  }, async (lease) => {
     emit({ event: "at-lock", pid: process.pid });
+    if (configuration.pauseAfterRenewal) {
+      const initialRenewedAtMs = lease.renewedAtMs;
+      while (lease.renewedAtMs === initialRenewedAtMs) {
+        await new Promise((accept) => setTimeout(accept, 10));
+      }
+      emit({
+        event: "renewed",
+        pid: process.pid,
+        createdAtMs: lease.createdAtMs,
+        renewedAtMs: lease.renewedAtMs
+      });
+    }
     await waitForCommand("release");
     return { released: true };
   });

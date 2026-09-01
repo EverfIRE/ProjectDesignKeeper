@@ -23,6 +23,8 @@ interface WorkerResult {
 interface WorkerEvent {
   event: string;
   pid?: number;
+  createdAtMs?: number;
+  renewedAtMs?: number;
   result?: WorkerResult;
 }
 
@@ -864,15 +866,20 @@ describe("cross-process project leases", () => {
       projectRoot: project().repository,
       now: () => Date.now(),
       timeoutMs: 1_000,
-      leaseMs: 180,
+      leaseMs: 600,
+      monotonicNow: () => 0,
       afterAcquire: async (path) => { lockPath = path; },
-      writeLeaseRenewal: async () => {
+      writeLeaseRenewal: async (handle: FileHandle) => {
+        Object.defineProperty(handle, "sync", {
+          configurable: true,
+          value: async () => undefined
+        });
         renewalAttempted();
         return { bytesWritten: 0 };
       }
-    }, async () => {
+    }, async (lease) => {
       await deadline(renewalAttemptedPromise, 1_000, "zero-progress renewal");
-      await delay(10);
+      await expect(lease.assertOwned()).rejects.toThrow(/renewal write was incomplete/i);
     }).then(() => undefined, (error: Error) => error);
 
     expect(failure).toBeInstanceOf(Error);
@@ -1123,13 +1130,16 @@ describe("cross-process project leases", () => {
     const template = await lockTemplate(layout);
     let closeCalls = 0;
     let closeCapturedHandle: (() => Promise<void>) | undefined;
+    let closeEntered!: () => void;
+    const closeEnteredPromise = new Promise<void>((accept) => { closeEntered = accept; });
 
     const running = withProcessLease({
       layout,
       projectRoot: project().repository,
       now: () => Date.now(),
-      timeoutMs: 500,
-      leaseMs: 90,
+      timeoutMs: 1_000,
+      leaseMs: 600,
+      monotonicNow: () => 0,
       writeLeaseRenewal: async (handle: FileHandle, bytes: Buffer, offset: number) => {
         const written = await handle.write(bytes, offset, bytes.byteLength - offset, offset);
         closeCapturedHandle = handle.close.bind(handle);
@@ -1137,15 +1147,22 @@ describe("cross-process project leases", () => {
           configurable: true,
           value: () => {
             closeCalls += 1;
+            closeEntered();
             return new Promise<void>(() => undefined);
           }
         });
+        Object.defineProperty(handle, "sync", {
+          configurable: true,
+          value: async () => undefined
+        });
         return written;
       }
-    }, async () => { await delay(150); });
+    }, async () => {
+      await deadline(closeEnteredPromise, 1_000, "renewal handle close entry");
+    });
 
     try {
-      const failure = await deadline(running, 650, "outer pending native close")
+      const failure = await deadline(running, 1_500, "outer pending native close")
         .then(() => undefined, (error: Error) => error);
       expect(failure).toBeInstanceOf(Error);
       const messages = errorMessages(failure).join("\n");
@@ -1770,37 +1787,49 @@ describe("cross-process project leases", () => {
       root: project().repository,
       cacheDirectory: cache(),
       timeoutMs: 1_000,
-      leaseMs
+      leaseMs,
+      pauseAfterRenewal: true
     });
-    await worker.waitFor("at-lock");
-    const initial = JSON.parse((await readFile(lock, "utf8")).trim()) as Record<string, unknown>;
-    const pollingEndsAt = Date.now() + 2_500;
-    let renewed = initial;
-    while (Date.now() <= Number(initial.createdAtMs) + leaseMs ||
-           Number(renewed.renewedAtMs) + leaseMs <= Date.now() + 200) {
-      if (Date.now() >= pollingEndsAt) throw new Error("renewed worker evidence did not reach the protected window");
-      await delay(25);
-      renewed = JSON.parse((await readFile(lock, "utf8")).trim()) as Record<string, unknown>;
-    }
+    const locked = await worker.waitFor("at-lock");
+    const renewed = await worker.waitFor("renewed", 5_000);
     await worker.crash();
     const persisted = JSON.parse((await readFile(lock, "utf8")).trim()) as Record<string, unknown>;
+    const createdAtMs = Number(persisted.createdAtMs);
+    const renewedAtMs = Number(persisted.renewedAtMs);
+    const protectedNow = Math.max(createdAtMs + leaseMs, renewedAtMs);
 
-    expect(Date.now()).toBeGreaterThan(Number(persisted.createdAtMs) + leaseMs);
-    expect(Number(persisted.renewedAtMs) + leaseMs).toBeGreaterThan(Date.now() + 100);
-    await expect(withProcessLease({
+    expect(renewed).toMatchObject({
+      event: "renewed",
+      pid: locked.pid,
+      createdAtMs,
+      renewedAtMs
+    });
+    expect(renewedAtMs).toBeGreaterThan(createdAtMs);
+    expect(protectedNow).toBeGreaterThanOrEqual(createdAtMs + leaseMs);
+    expect(protectedNow).toBeLessThan(renewedAtMs + leaseMs);
+    let monotonicMs = 0;
+    let retryReason: string | undefined;
+    let enteredTooEarly = false;
+    const protectedFailure = await withProcessLease({
       layout,
       projectRoot: project().repository,
-      now: () => Date.now(),
-      timeoutMs: 100,
-      leaseMs
-    }, async () => "too early")).rejects.toThrow(/project lease.*timeout|live/i);
+      now: () => protectedNow,
+      timeoutMs: 1_000,
+      leaseMs,
+      monotonicNow: () => monotonicMs,
+      beforeAcquireRetry: async (_path, reason) => { retryReason = reason; },
+      waitForRetry: async () => { monotonicMs = 1_001; }
+    }, async () => { enteredTooEarly = true; }).then(() => undefined, (error: Error) => error);
+    expect(protectedFailure).toBeInstanceOf(Error);
+    expect(errorMessages(protectedFailure).join("\n")).toMatch(/project lease.*timeout/i);
+    expect(retryReason).toBe("live-owner");
+    expect(enteredTooEarly).toBe(false);
     await expect(readFile(lock, "utf8")).resolves.toContain(String(persisted.nonce));
 
-    await delay(Math.max(0, Number(persisted.renewedAtMs) + leaseMs - Date.now() + 40));
     await expect(withProcessLease({
       layout,
       projectRoot: project().repository,
-      now: () => Date.now(),
+      now: () => renewedAtMs + leaseMs,
       timeoutMs: 1_000,
       leaseMs
     }, async () => "reclaimed after renewed expiry")).resolves.toBe("reclaimed after renewed expiry");
