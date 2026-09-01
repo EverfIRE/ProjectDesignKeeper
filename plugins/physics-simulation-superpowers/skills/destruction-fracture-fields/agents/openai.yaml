@@ -1,0 +1,6 @@
+interface:
+  display_name: "Destruction, Fracture, and Fields"
+  short_description: "Design bounded, authoritative destruction"
+  default_prompt: "Use $destruction-fracture-fields to design and test real-time destruction."
+policy:
+  allow_implicit_invocation: true

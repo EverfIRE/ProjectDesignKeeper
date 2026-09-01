@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "attempt": 5,
+  "status": "pass",
+  "evaluation_date": "2026-08-28",
+  "collaboration_task_name": "/root/task17_enabled_eval5_injected",
+  "evaluator": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high",
+    "fork_turns": "none"
+  },
+  "isolation": {
+    "injected_inputs_only": true,
+    "tools": false,
+    "browse": false,
+    "repository_access": false,
+    "prior_attempt_context": false
+  },
+  "invocation": {
+    "path": "evaluations/unreal-chaos-physics/attempt-5-evaluator-invocation.txt",
+    "bytes": 27518,
+    "sha256": "d17fd8acac85977e17ef01d54f5e3e2aeb817afd4b89a66345ec3ec9a8a7b931",
+    "transmission_contract": "The controller must read this tracked fixture byte-for-byte and send its complete text as the sole task prompt to a fresh evaluator with the declared model, reasoning, and fork isolation."
+  },
+  "source_snapshot": {
+    "base_commit": "64fb9a7b02542a0b31c2fe21fb4a45fc2778e85b",
+    "source_commit": "d4ca82962daa06b7edba5b33461ef3441302f818",
+    "source_commit_note": "This preparation commit contains the exact scenario, skill, one-level reference, and invocation. The additive backfill commit changes only provenance, its tests, evaluation evidence, and the report because a commit cannot truthfully embed its own hash.",
+    "components": [
+      {
+        "role": "scenario",
+        "path": "tests/fixtures/unreal-chaos-physics-scenario.txt",
+        "bytes": 1578,
+        "sha256": "39723d8fc54b0d999bcd269046f945ad91b94b9435ffd4d504a197217d8f16ad"
+      },
+      {
+        "role": "skill",
+        "path": "skills/unreal-chaos-physics/SKILL.md",
+        "bytes": 4188,
+        "sha256": "e422af41bd610ec1d94da2b5ae00f8b8405c7098772e843d9ea6659d5c7caf4f"
+      },
+      {
+        "role": "one_level_reference",
+        "path": "skills/unreal-chaos-physics/references/unreal-chaos.md",
+        "bytes": 20056,
+        "sha256": "8b826d5647598ae1acfd57cfc5f32387ea2b19c51de15b71e7365d29f18d7d0a"
+      }
+    ]
+  },
+  "result": {
+    "response_path": "tests/fixtures/unreal-chaos-physics-enabled-attempt-5-response.txt",
+    "response_bytes": 18116,
+    "response_sha256": "4d6fe1b8e467291f994c1040481d0d56020a309c4a136f613eab6062b2970c82",
+    "preservation_source_path": "C:\\Users\\qiupeng\\Documents\\Codex\\2026-08-26\\new-chat\\.superpowers\\sdd\\2026-08-26-physics-simulation-superpowers\\task-17-enabled-5-exact.txt",
+    "preservation_path_note": "The evaluator wrote the exact response outside the repository because its working directory was the workspace root. This is a post-evaluation preservation-path fact, not an evaluation failure.",
+    "semantic_gate_violations": [],
+    "external_run_id": null,
+    "external_run_id_note": "No external run ID has been exposed. None is invented."
+  }
+}

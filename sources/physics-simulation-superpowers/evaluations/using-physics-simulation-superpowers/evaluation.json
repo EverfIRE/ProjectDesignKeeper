@@ -1,0 +1,18 @@
+{
+  "skill": "using-physics-simulation-superpowers",
+  "scenario": "请复现一篇关于 Unreal Engine 5 Chaos 联机车辆物理的论文，并把方法移植到稳定 60 FPS 的 PC/PS5 多人游戏。服务器权威、客户端预测；论文和仓库待查。请明确列出你会调用的 Physics Simulation Superpowers skill 名称、调用顺序、为什么，并指出继续前缺少的上下文。",
+  "baseline": {
+    "response": "我目前没有可调用的 “Physics Simulation Superpowers” 技能，因此无法列出或按顺序调用其子技能；应先检索论文、代码仓库和 UE5/Chaos 版本信息。\n\n在获得资料后，我会按此工程流程推进：复现实验与基准 → 审核 Chaos 车辆模型及网络同步假设 → 实现服务器权威状态与客户端输入预测/回滚校正 → 进行 PC、PS5 的 60 FPS 性能分析与降级策略验证 → 多人压力测试和确定性/一致性评估。\n\n继续前缺少：论文链接或 DOI、对应仓库、目标 UE5 与 Chaos Vehicles 版本、目标玩家数/网络条件、车辆和赛道复杂度、PS5 开发环境与性能预算、允许的预测误差及校正策略。",
+    "observations": "It recognized the engineering phases and useful missing context but could not name or order plugin skills, did not separate survey/review/reproduction/transfer, and omitted experiment/evidence contracts."
+  },
+  "enabled": {
+    "response": "## Selected skills\n\n1. `surveying-real-time-physics-research` — 论文与仓库未知，先定位可复现的 Chaos 联机车辆研究与代码。\n2. `reviewing-simulation-papers` — 确认候选方法的假设、证据与复现边界。\n3. `reproducing-simulation-papers` — 在可控 UE5 Chaos 测试场景复现实验结果。\n4. `architecting-real-time-physics` — 定义服务器权威、客户端预测、回滚/纠偏及物理状态契约。\n5. `vehicle-physics` — 处理车辆动力学、轮胎/悬挂与操控参数的可迁移实现。\n6. `networked-deterministic-physics` — 设计预测、输入同步、状态快照与误差修正策略。\n7. `unreal-chaos-physics` — 将方案落到已验证版本的 UE5 Chaos API 与运行时限制。\n8. `translating-research-to-game-physics` — 把论文原型转化为可维护的 PC/PS5 游戏实现。\n9. `profiling-scaling-physics` — 以 60 FPS 为验收目标，制定 CPU/GPU/物理 tick 预算与压测方案。\n\n## Missing context\n\n- 目标论文、DOI/链接及对应仓库。\n- UE5/Chaos 的精确版本，以及现有网络框架与车辆实现。\n- 玩家/车辆并发数、赛道规模、物理 tick、可接受的输入延迟与纠偏表现。\n- PC 与 PS5 的 CPU/GPU/内存预算，以及“稳定 60 FPS”的具体压测场景和验收指标。",
+    "observations": "It explicitly separated survey, review, reproduction, architecture/domain/network/adapter, transfer, and profiling; ordered them by evidence and implementation dependency; named only the requested adapter and no unrelated physics domains; and surfaced route-changing version, artifact, scale, network, and budget context."
+  },
+  "verdict": "pass",
+  "evidence": [
+    "The enabled route starts with surveying-real-time-physics-research and reviewing-simulation-papers because the response identifies the paper and repository as unknown.",
+    "The ordered route includes reproducing-simulation-papers, translating-research-to-game-physics, unreal-chaos-physics, vehicle-physics, networked-deterministic-physics, and profiling-scaling-physics.",
+    "The response names Unreal Chaos as the only adapter and does not select Unity, Godot/Jolt, native Jolt, PhysX SDK, Rapier, Box2D, fluids, cloth, or destruction."
+  ]
+}

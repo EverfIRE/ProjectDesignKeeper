@@ -1,0 +1,6 @@
+interface:
+  display_name: "Simulation Paper Reproduction / 仿真论文复现"
+  short_description: "Reproduce simulation claims with auditable evidence"
+  default_prompt: "Use $reproducing-simulation-papers to reproduce one source-anchored simulation claim and return a validated reproduction-run record."
+policy:
+  allow_implicit_invocation: true

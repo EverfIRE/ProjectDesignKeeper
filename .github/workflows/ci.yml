@@ -8,38 +8,68 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: windows-latest
+  project-design-keeper:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: source
+        working-directory: sources/project-design-keeper
     steps:
-      - uses: actions/checkout@v4
-      - name: Use the runner temporary directory for tests
+      - name: Checkout Keeper source
+        uses: actions/checkout@v4
+      - name: Configure Keeper test temp on Windows
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           "TEMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
           "TMP=$env:RUNNER_TEMP" >> $env:GITHUB_ENV
-      - uses: actions/setup-node@v4
+      - name: Set up Keeper Node.js 20
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: source/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run build
-      - name: Verify repository distribution
+          cache-dependency-path: sources/project-design-keeper/package-lock.json
+      - name: Install Keeper dependencies
+        run: npm ci
+      - name: Typecheck Keeper source
+        run: npm run typecheck
+      - name: Build Keeper runtime
+        run: npm run build
+      - name: Verify Keeper repository distribution
+        if: runner.os == 'Windows'
         working-directory: .
         run: node --test test/distribution.test.mjs
-      - name: Verify rebuilt runtime is committed in both trees
+      - name: Verify Keeper runtime parity
+        if: runner.os == 'Windows'
         working-directory: .
-        run: git diff --exit-code -- source/dist/index.js plugins/project-design-keeper/dist/index.js
-      - run: npm run test:ci
-      - run: npm run test:coverage
-      - run: npm run smoke
-      - run: npm run test:perf
-      - run: npm run package:verify
-      - name: Smoke installed package from a temporary fixture
+        run: git diff --exit-code -- sources/project-design-keeper/dist/index.js plugins/project-design-keeper/dist/index.js
+      - name: Run Keeper CI tests
+        run: npm run test:ci
+        env:
+          PLUGIN_DATA: ${{ runner.temp }}/keeper-test-ci
+      - name: Run Keeper coverage
+        if: runner.os == 'Windows'
+        run: npm run test:coverage
+        env:
+          PLUGIN_DATA: ${{ runner.temp }}/keeper-coverage
+      - name: Run Keeper smoke test
+        run: npm run smoke
+        env:
+          PLUGIN_DATA: ${{ runner.temp }}/keeper-smoke
+      - name: Run Keeper performance tests
+        if: runner.os == 'Windows'
+        run: npm run test:perf
+        env:
+          PLUGIN_DATA: ${{ runner.temp }}/keeper-perf
+      - name: Verify Keeper package
+        run: npm run package:verify
+        env:
+          PLUGIN_DATA: ${{ runner.temp }}/keeper-package-verify
+      - name: Smoke installed Keeper package
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -163,7 +193,7 @@ jobs:
             New-Item -ItemType Directory -Path $fixture | Out-Null
             Assert-NoReparsePathComponents -Label 'CI installed smoke fixture' -Path $fixture
             $fixtureIdentity = [KeeperCiFixtureNative]::GetDirectoryIdentity($fixture)
-            npm run smoke:installed -- "${{ github.workspace }}\source\.package\project-design-keeper" "$fixture"
+            npm run smoke:installed -- "${{ github.workspace }}\sources\project-design-keeper\.package\project-design-keeper" "$fixture"
             if ($LASTEXITCODE -ne 0) { throw "Installed package smoke failed with exit code $LASTEXITCODE" }
             $smokeSucceeded = $true
           }
@@ -212,21 +242,106 @@ jobs:
             }
           }
 
-  portable:
+  physics-simulation-superpowers:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: source
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout physics source
+        uses: actions/checkout@v4
+      - name: Set up physics Python 3.11
+        uses: actions/setup-python@v5
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: source/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run test:ci
-      - run: npm run build
-      - run: npm run smoke
-      - run: npm run package:verify
+          python-version: '3.11'
+      - name: Parse every tracked physics JSON document
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.json) python -m json.tool "$file" > /dev/null ;;
+            esac
+          done < <(git ls-files -z -- sources/physics-simulation-superpowers)
+      - name: Run the full physics suite in a disposable standalone repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          standalone="$(mktemp -d "$RUNNER_TEMP/physics-ci-XXXXXX")"
+          case "$standalone" in "$RUNNER_TEMP"/physics-ci-*) ;; *) exit 1 ;; esac
+          trap 'rm -rf "$standalone"' EXIT
+          git -C "$GITHUB_WORKSPACE" archive --format=tar HEAD sources/physics-simulation-superpowers | tar -C "$standalone" -xf -
+          git -C "$GITHUB_WORKSPACE" archive --format=tar HEAD plugins/physics-simulation-superpowers | tar -C "$standalone" -xf -
+          test ! -e "$standalone/sources/physics-simulation-superpowers/.git"
+          git -C "$standalone" init -q
+          git -C "$standalone" config core.autocrlf false
+          git -C "$standalone" config user.name 'CI'
+          git -C "$standalone" config user.email 'ci@example.invalid'
+          git -C "$standalone" add --all
+          git -C "$standalone" commit -qm 'physics source snapshot'
+          (
+            cd "$standalone/sources/physics-simulation-superpowers"
+            python -m unittest discover -s tests -p "test_*.py" -q
+            python -m unittest tests.test_repository_distribution -q
+          )
+      - name: Validate physics plugins and every released skill
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_codex_plugin.py plugin sources/physics-simulation-superpowers
+          python tools/validate_codex_plugin.py plugin plugins/physics-simulation-superpowers
+          mapfile -t skills < <(find plugins/physics-simulation-superpowers/skills -mindepth 1 -maxdepth 1 -type d | sort)
+          test "${#skills[@]}" -eq 25
+          for skill in "${skills[@]}"; do python tools/validate_codex_plugin.py skill "$skill"; done
+      - name: Regenerate and compare the complete physics release tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          temporary="$(mktemp -d "$RUNNER_TEMP/physics-release-XXXXXX")"
+          case "$temporary" in "$RUNNER_TEMP"/physics-release-*) ;; *) exit 1 ;; esac
+          trap 'rm -rf "$temporary"' EXIT
+          python sources/physics-simulation-superpowers/scripts/package_plugin.py --source sources/physics-simulation-superpowers --archive "$temporary/release.zip" --install-dir "$temporary/generated"
+          python - "$temporary/generated" plugins/physics-simulation-superpowers <<'PY'
+          import sys
+          from pathlib import Path
+          expected, committed = map(Path, sys.argv[1:])
+          def entries(root):
+              result = {}
+              for path in root.rglob("*"):
+                  relative = path.relative_to(root)
+                  if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                      raise SystemExit(f"non-regular release entry: {relative}")
+                  result[relative] = ("file", path.read_bytes()) if path.is_file() else ("directory", None)
+              return result
+          if entries(expected) != entries(committed):
+              raise SystemExit("committed physics release does not exactly match generated release")
+          PY
+      - name: Reject public release symlink modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! git ls-files -s -- plugins/project-design-keeper plugins/physics-simulation-superpowers | awk '$1 == "120000" { found=1 } END { exit found ? 0 : 1 }'
+      - name: Reject tracked physics release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          violations=0
+          while IFS= read -r file; do
+            case "$file" in
+              *.zip|SHA256SUMS.txt|*/SHA256SUMS.txt|artifacts|*/artifacts|artifacts/*|*/artifacts/*|sources/physics-simulation-superpowers/outputs/*)
+                printf 'tracked generated artifact: %s\n' "$file"
+                violations=1
+                ;;
+            esac
+          done < <(git ls-files)
+          test "$violations" -eq 0
+
+  distribution:
+    needs: [project-design-keeper, physics-simulation-superpowers]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository distribution
+        uses: actions/checkout@v4
+      - name: Set up distribution Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run repository distribution contract
+        run: node --test test/distribution.test.mjs

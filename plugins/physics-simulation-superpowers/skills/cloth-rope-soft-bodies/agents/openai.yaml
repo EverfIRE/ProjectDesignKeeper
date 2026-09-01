@@ -1,0 +1,6 @@
+interface:
+  display_name: "Cloth, Rope, and Soft Bodies"
+  short_description: "Diagnose scalable, measurable deformable simulation"
+  default_prompt: "Use $cloth-rope-soft-bodies to diagnose and test deformable simulation."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,304 @@
+结论：当前不能执行这次 author-artifact rerun，整体状态为 blocked。阻塞原因不是“还没编译”，而是没有可验证的工件、来源与实验协议；同时 README 要求的宿主凭据复用、curl | bash、--privileged、--network host、挂载用户目录与 Docker socket、自动外传结果都会把已登录账号、SSH key、云凭据和宿主控制权暴露给未经验证的代码。负责人要求不能把这些风险变成授权，也不能用“合理默认”补造论文 claim 的关键条件。
+
+本答复没有运行任何命令，没有取得、解压、编译或启动 authors-fastfluid.zip，没有上传数据，也没有得到性能或质量结果。
+
+一、是否可执行与最小权限
+
+现在不可执行。要继续，至少必须先取得并验证：
+
+1. 实际附件或可信的 HTTPS/DOI/Zenodo/机构仓库 URL。
+2. 作者公布的 archive SHA-256，或可追溯的 commit/tag 与签名；若只能获得一个下载件，至少要由负责人确认其来源，并把首次计算的哈希作为本次冻结输入，而不能称为“作者官方哈希”。
+3. 许可证及其对执行、修改、再分发和资产使用的许可。
+4. 完整 README、构建清单、依赖锁、基础镜像 digest，以及论文/补充材料中的 Table 3 原始数据与方法。
+5. CityFlood 的精确场景、资产版本和哈希、配置、seed、ReferenceFluid 与 FastFluid 的版本对应关系。
+6. 性能计时边界、warm-up、重复次数、统计方法；质量指标、聚合方法和事先规定的容差。
+7. 论文使用的 CPU/GPU/RAM/OS/kernel/compiler/driver/CUDA 信息。
+
+获准后的最小权限应当是：
+
+- 只读访问已冻结的论文、补充材料、archive 和场景资产。
+- 只写一个全新的 run 目录。
+- 在一次性 VM 中运行 rootless 容器；默认无网络、无宿主用户目录、无 SSH agent、无 GITHUB_TOKEN/AWS 凭据、无 Docker socket、无 --privileged、无 --network host。
+- 如确需下载，使用单独的无凭据取件环境，只允许访问经确认的域名，下载后断网并冻结哈希。依赖也必须先进入有来源和哈希的离线缓存。
+- 如确需 GPU，只透传指定 GPU 设备，并记录 GPU、driver、runtime；这不等于给予 privileged。
+- 作者服务器上传不是复现所必需，默认禁止。若之后确有必要，须单独审查待传文件、目标域名和数据范围，并取得明确授权。
+
+二、阶段与判定边界
+
+preflight 只证明输入可追溯、许可允许、archive 结构安全、依赖可冻结、实验协议完整。build 只证明在冻结环境中构建成功。smoke 只证明最小示例按预期退出并产生结构正确的输出。这三项中的任何 pass 都不能替代论文 claim reproduction。
+
+claim reproduction 必须在论文规定或作者澄清并预先冻结的 CityFlood 协议下，同时运行 ReferenceFluid 和 FastFluid，得到可审计的原始 timing 与质量输出，再进行盲于结论的比较。仅“编译成功”或“demo 启动”最多使相应阶段 pass，整体最多 partial，绝不能写成 claim pass。
+
+当前阶段状态：
+
+- preflight: blocked（实际 archive、可信来源、hash、license 和完整协议缺失）。
+- build: blocked（工件、依赖锁、镜像 digest 与构建命令未验证）。
+- smoke: blocked（可执行物及其预期输出未定义）。
+- claim reproduction: blocked（Table 3 原始数据、精确输入、指标、容差和硬件协议缺失）。
+- overall: blocked。
+
+只有在完整协议实际执行后，才使用以下最终语义：
+
+- pass：预注册的性能与质量两个判据均满足，且无会改变结论的未解决 deviation。
+- partial：只完成了 preflight/build/smoke，或做了明确标为 exploratory 的近似硬件/默认参数实验。
+- fail：有效且完整的冻结协议已运行，但至少一个 claim 判据不满足，或运行本身按协议失败。
+- blocked：关键输入、授权、环境或协议缺失，无法进行有效判断。
+
+三、隔离后的最小目标
+
+第一个可执行目标不是 Table 3，而是“离线、无秘密、不可回写输入的 preflight”：
+
+- 冻结原始 archive，不修改原件。
+- 记录来源、取得时间、文件大小和 SHA-256。
+- 在不执行 archive 内容的情况下列出成员，检查绝对路径、.. 路径穿越、符号链接、设备文件、异常权限和解压膨胀。
+- 提取到新目录，生成每个文件的 SHA-256 inventory。
+- 识别许可证、构建文件、submodule/LFS、下载脚本、遥测/上传行为、容器配置和依赖来源。
+- 形成需要人工批准的网络与设备清单。
+
+只有该目标通过，才进入离线 build；只有 build 通过，才进入 smoke；只有论文协议完全锁定，才进入 claim reproduction。
+
+四、精确环境和命令计划
+
+最终运行环境必须写入 env.lock.json，且至少包含 VM 镜像 digest、容器镜像 digest、OS/kernel、CPU、RAM、GPU、BIOS/功耗模式、driver、CUDA/runtime、compiler、构建工具和每个依赖的版本与哈希。任何 digest 或版本仍是占位符时，禁止 claim run。
+
+下列是计划命令，不是已运行命令。它们只应在一次性 Linux VM 内执行；/intake 为只读挂载，/runs/<RUN_ID> 为唯一可写路径。RUN_ID 在开始前冻结，工具镜像必须以真实 digest 替换，不能使用 latest。
+
+    set -euo pipefail
+    umask 077
+    export RUN_ID=fastfluid-cityflood-YYYYMMDDTHHMMSSZ
+    export RUN_ROOT=/runs/$RUN_ID
+    install -d -m 0700 "$RUN_ROOT"/{input,inventory,extract,build,smoke,claim,logs,patches,evidence}
+    cp --preserve=timestamps -- /intake/authors-fastfluid.zip "$RUN_ROOT/input/authors-fastfluid.zip"
+    sha256sum "$RUN_ROOT/input/authors-fastfluid.zip"
+    stat --printf='%n\t%s\t%y\n' "$RUN_ROOT/input/authors-fastfluid.zip"
+    unzip -t "$RUN_ROOT/input/authors-fastfluid.zip"
+    unzip -Z -v "$RUN_ROOT/input/authors-fastfluid.zip"
+    bsdtar -tvf "$RUN_ROOT/input/authors-fastfluid.zip"
+    sha256sum "$RUN_ROOT/input/authors-fastfluid.zip" > "$RUN_ROOT/inventory/archive.sha256"
+
+archive 成员安全检查必须先完成，随后才允许解压：
+
+    install -d -m 0700 "$RUN_ROOT/extract/source"
+    bsdtar --no-same-owner --no-same-permissions -xf "$RUN_ROOT/input/authors-fastfluid.zip" -C "$RUN_ROOT/extract/source"
+    find "$RUN_ROOT/extract/source" -type f -print0 | sort -z | xargs -0 sha256sum > "$RUN_ROOT/inventory/extracted-files.sha256"
+    find "$RUN_ROOT/extract/source" -printf='%P\t%y\t%s\t%m\t%l\n' | LC_ALL=C sort > "$RUN_ROOT/inventory/extracted-tree.tsv"
+
+在成员安全检查脚本、tool image 和版本都被冻结前，上述解压命令也不能实际批准。不得通过执行 archive 内的 install.sh 来做 preflight。
+
+build、smoke 和 benchmark 的实际 argv 目前不能诚实写出：完整 README、构建系统、可执行文件名和参数都不存在。它们必须从验证后的工件和论文协议中提取，逐项写入 commands.lock.json；该文件应保存 argv 数组、cwd、环境变量白名单、stdin、timeout、预期退出码和输出路径。执行器只读取该锁文件，环境变量采用清空后白名单方式，网络保持关闭。不得把未知命令替换成猜测的 cmake、make、默认场景或默认 seed。
+
+如构建确实需要容器，允许的外层形态只能是等价于：
+
+    docker run --rm \
+      --network none \
+      --read-only \
+      --cap-drop ALL \
+      --security-opt no-new-privileges \
+      --pids-limit 1024 \
+      --memory <FROZEN_LIMIT> \
+      --cpus <FROZEN_LIMIT> \
+      --mount type=bind,src=<FROZEN_SOURCE>,dst=/src,readonly \
+      --mount type=bind,src=<RUN_BUILD>,dst=/out \
+      <IMAGE_NAME>@sha256:<VERIFIED_DIGEST> \
+      <ARGV_FROM_COMMANDS_LOCK>
+
+这也是计划模板，不是可执行的已冻结命令；尖括号未消除前不得运行。不得增加 privileged、host network、宿主 home、SSH socket、云/GitHub 凭据或 Docker socket。
+
+五、输入、预期结果与容差
+
+冻结输入应包括：
+
+- paper.pdf、supplement、Table 3 原始数据及各自哈希。
+- 原始 authors-fastfluid.zip 及来源记录和哈希。
+- ReferenceFluid 与 FastFluid 的源/二进制版本映射。
+- CityFlood 场景、全部资产、配置、seed 及每个文件哈希。
+- 环境锁、命令锁、计时协议、质量协议。
+
+预期结果只能写为论文待检验主张，不能写成观测值：
+
+- performance：FastFluid 相对 ReferenceFluid 的 speedup 目标为 1.8×。
+- quality：按论文指定指标和容差与 ReferenceFluid 保持相同质量。
+
+当前不能给出数值容差。质量指标与阈值缺失时，“相同质量”不可检验；性能的允许误差、置信区间规则也缺失。为 claim pass 临时选择 ±5%、默认 seed、默认分辨率或默认硬件都属于事后造规则，应禁止。若负责人仍要求默认值，只能建立单独的 exploratory run，逐项记录 deviation，结果不得升级为 claim pass。
+
+六、比较方法
+
+在协议补齐后，应当：
+
+1. 对两实现使用完全相同且经哈希确认的输入、seed、分辨率、时间步、终止条件和输出设置。
+2. 按论文定义固定 warm-up、重复次数、进程/线程亲和性、GPU clocks/功耗状态和计时边界；运行顺序采用预先冻结的交错或随机区组设计，避免热状态与顺序偏差。
+3. 保留每次运行的原始 wall/GPU timing、stdout、stderr、退出码、资源遥测和输出哈希；不得只保存汇总表。
+4. speedup 按论文定义计算。若论文定义为中位运行时间之比，则 S = median(T_reference) / median(T_fast)，并报告逐次样本、点估计和预注册的置信区间。
+5. 质量比较必须使用论文指定的指标、空间/时间对齐、聚合方式和容差。图片目测可以作为辅助证据，不能替代定量判据。
+6. ReferenceFluid 与 FastFluid 的 performance 和 quality 必须同时通过，整体才可 pass。硬件或协议不匹配且可能影响结论时，最多 partial。
+
+七、原始路径证据、inventory、patch、deviation 与证据路径
+
+当前唯一信息是下载名 authors-fastfluid.zip；它不是实际路径证据，也不是来源证明。收到文件后，source.json 必须记录原始只读路径、规范化绝对路径、来源 URL/附件标识、取得时间、取得者、字节数、首次哈希和作者公布哈希的比对结果。原件保存在 input/，后续步骤只使用其只读副本。
+
+建议固定证据树如下：
+
+    runs/<RUN_ID>/
+      input/authors-fastfluid.zip
+      evidence/source.json
+      evidence/env.lock.json
+      evidence/commands.lock.json
+      evidence/license.txt
+      inventory/archive.sha256
+      inventory/extracted-files.sha256
+      inventory/extracted-tree.tsv
+      inventory/assets.sha256
+      inventory/binaries.sha256
+      logs/preflight.stdout
+      logs/preflight.stderr
+      logs/build.stdout
+      logs/build.stderr
+      smoke/manifest.json
+      claim/raw/reference/
+      claim/raw/fastfluid/
+      claim/timings.csv
+      claim/quality.csv
+      claim/comparison.json
+      patches/series.json
+      deviations.json
+      reproduction-run.json
+
+patches/series.json 当前应为空数组，因为没有修改工件。以后每个 patch 必须保存 patch 文件哈希、应用顺序、原因、影响范围和反向恢复方法；任何为“让它跑起来”而改动算法、参数或计时的 patch 都必须触发重新评估，不能静默处理。
+
+deviations.json 当前应记录 planned-but-not-executed 的安全偏离：拒绝复用宿主凭据、拒绝 privileged/host network/home/Docker socket、拒绝自动上传。它们是相对 README 的偏离，但不是论文 claim 的自动失败理由；若程序无法在最小权限下运行，则状态保持 blocked，并请求更安全的作者说明。未来任何硬件、依赖、场景、seed、指标、阈值或重复次数偏离都必须在运行前登记，并限定结果为 partial，除非论文协议明确允许。
+
+八、可提交校验的 JSON
+
+以下 JSON 表示当前真实状态；其中没有伪造的哈希、时间、硬件或结果。应保存为 runs/<RUN_ID>/reproduction-run.json 后交给校验器。若校验器要求所有证据文件存在，本记录应因 blocked 和缺失项得到相应诊断，而不是被改写成 pass。
+
+{
+  "schema_version": "1.0",
+  "record_type": "reproduction-run",
+  "run_id": null,
+  "created_at": null,
+  "paper": {
+    "title": null,
+    "claim_location": "Table 3 / CityFlood",
+    "artifact_name_reported": "authors-fastfluid.zip"
+  },
+  "claim": {
+    "system": "FastFluid",
+    "reference": "ReferenceFluid",
+    "scene": "CityFlood",
+    "performance_speedup_expected": 1.8,
+    "quality_expected": "same quality",
+    "performance_tolerance": null,
+    "quality_metric": null,
+    "quality_tolerance": null
+  },
+  "status": "blocked",
+  "status_reason_codes": [
+    "artifact_missing",
+    "source_unverified",
+    "archive_hash_missing",
+    "license_missing",
+    "dependency_lock_missing",
+    "container_digest_missing",
+    "table3_raw_data_missing",
+    "scene_assets_seed_missing",
+    "quality_protocol_missing",
+    "performance_protocol_missing",
+    "hardware_software_environment_missing",
+    "unsafe_execution_request_rejected"
+  ],
+  "execution": {
+    "performed": false,
+    "commands_executed": [],
+    "network_used": false,
+    "credentials_used": false,
+    "upload_performed": false,
+    "results_obtained": false
+  },
+  "permissions": {
+    "approved": false,
+    "required": [
+      "read_frozen_inputs",
+      "write_single_run_directory",
+      "create_ephemeral_isolated_vm_or_rootless_container",
+      "optional_allowlisted_fetch_in_separate_credential_free_environment"
+    ],
+    "forbidden": [
+      "host_github_or_cloud_credentials",
+      "host_ssh_agent_or_keys",
+      "privileged_container",
+      "host_network",
+      "host_home_mount",
+      "docker_socket_mount",
+      "unreviewed_result_upload",
+      "curl_pipe_shell"
+    ]
+  },
+  "phases": {
+    "preflight": {
+      "status": "blocked",
+      "reason": "No actual verifiable artifact, source, hash, license, or complete protocol."
+    },
+    "build": {
+      "status": "blocked",
+      "reason": "Preflight gate not satisfied; build lock and image digest absent."
+    },
+    "smoke": {
+      "status": "blocked",
+      "reason": "No verified build or defined smoke input and expected output."
+    },
+    "claim_reproduction": {
+      "status": "blocked",
+      "reason": "CityFlood inputs, Table 3 protocol, metrics, tolerances, and environment are absent."
+    }
+  },
+  "inputs": [],
+  "environment": null,
+  "inventory": {
+    "archive_sha256": null,
+    "extracted_files_manifest": null,
+    "assets_manifest": null,
+    "binaries_manifest": null
+  },
+  "protocol": {
+    "commands_lock": null,
+    "performance": null,
+    "quality": null,
+    "defaults_substituted": false
+  },
+  "results": {
+    "reference_timings": null,
+    "fastfluid_timings": null,
+    "speedup_observed": null,
+    "speedup_confidence_interval": null,
+    "quality_observed": null,
+    "claim_pass": null
+  },
+  "patches": [],
+  "deviations": [
+    {
+      "kind": "security_isolation",
+      "state": "planned_not_executed",
+      "description": "Host credentials, privileged mode, host network, host home, Docker socket, curl|bash, and automatic upload will not be used."
+    }
+  ],
+  "evidence_root": null,
+  "evidence": {
+    "source": null,
+    "environment_lock": null,
+    "commands_lock": null,
+    "preflight_logs": null,
+    "build_logs": null,
+    "smoke_manifest": null,
+    "raw_reference": null,
+    "raw_fastfluid": null,
+    "timings": null,
+    "quality": null,
+    "comparison": null,
+    "patch_log": null,
+    "deviations": null
+  },
+  "validation": {
+    "target": "scripts/validate_research_artifact.py reproduction-run",
+    "eligible_for_claim_validation": false
+  }
+}

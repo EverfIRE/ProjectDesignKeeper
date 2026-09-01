@@ -1,0 +1,6 @@
+interface:
+  display_name: "Physics Profiling and Scaling"
+  short_description: "Attribute physics cost and scale it safely"
+  default_prompt: "Use $profiling-scaling-physics to turn an FPS claim into a matched, attributable physics profiling and scaling plan."
+policy:
+  allow_implicit_invocation: true

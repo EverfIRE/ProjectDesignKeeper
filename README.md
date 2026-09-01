@@ -1,47 +1,55 @@
-# Project Design Keeper
+# ProjectDesign
 
-Project Design Keeper is a Codex plugin that distills repository evidence into validated design documentation and reusable project context. The plugin bundles the `$distill-project-design` skill with a local MCP server.
+ProjectDesign is a two-plugin Codex monorepo. It publishes Project Design Keeper for maintaining reusable project-design context and Physics Simulation Superpowers for evidence-driven physics development, research, analysis, and paper reproduction.
+
+## Plugins
+
+| Plugin | Purpose | Activate in a new task |
+| --- | --- | --- |
+| `project-design-keeper` | Distills repository evidence into validated design documentation and reusable project context. | `@project-design-keeper` |
+| `physics-simulation-superpowers` | Develops, investigates, evaluates, and reproduces real-time physics simulations. | `@physics-simulation-superpowers` |
+
+Physics Simulation Superpowers is Unreal Engine / Chaos first. Its physics tasks 17–23 concentrate on Unreal Engine; other engines remain concise unless their physics systems are unusually strong, such as Jolt, PhysX, Rapier, or Box2D.
 
 ## Install from the Codex plugin marketplace
 
-Add this repository as a marketplace source:
+Add this repository's `project-design` marketplace at `main`, or upgrade the existing marketplace registration:
 
 ```powershell
-codex plugin marketplace add EverfIRE/ProjectDesignKeeper
+codex plugin marketplace add EverfIRE/ProjectDesign --ref main
+codex plugin marketplace upgrade project-design
 ```
 
-For the immutable `1.0.1` release, pin the marketplace to the release tag:
+Then complete the Codex UI steps:
 
-```powershell
-codex plugin marketplace add EverfIRE/ProjectDesign --ref v1.0.1
-```
+1. Restart Codex so it reloads the marketplace.
+2. Open the Plugins Directory and install `project-design-keeper`, `physics-simulation-superpowers`, or both.
+3. Create a new task after installation; the task that performed the installation does not hot-refresh newly installed plugins.
+4. Activate the installed plugin in that new task with `@project-design-keeper` or `@physics-simulation-superpowers`.
 
-Restart the ChatGPT desktop app, open the Plugins Directory, select **ProjectDesignKeeper**, and install `project-design-keeper`. After installation, mention `@ProjectDesignKeeper` in the composer to use the plugin, or invoke `$distill-project-design` directly for its knowledge-maintenance workflow.
+You can then invoke a plugin skill directly, for example `$distill-project-design`, `$unreal-chaos-physics`, `$surveying-real-time-physics-research`, or `$reproducing-simulation-papers`.
 
-To inspect or update the marketplace later:
-
-```powershell
-codex plugin marketplace list
-codex plugin marketplace upgrade project-design-keeper
-```
-
-## Repository layout
+## Repository layout and maintenance boundary
 
 | Path | Purpose |
 | --- | --- |
-| `.agents/plugins/marketplace.json` | Repository marketplace catalog read by Codex |
-| `plugins/project-design-keeper/` | Installable release package only |
-| `source/` | Complete TypeScript source, tests, build scripts, and package metadata |
-| `test/distribution.test.mjs` | Repository-level release/source separation and metadata checks |
+| `.agents/plugins/marketplace.json` | The `project-design` marketplace catalog for both plugins. |
+| `sources/project-design-keeper/` | Hand-maintained TypeScript source, tests, build scripts, and package metadata for Keeper. |
+| `sources/physics-simulation-superpowers/` | Hand-maintained physics skills, research resources, tests, validators, and packaging source. |
+| `plugins/project-design-keeper/` | Deterministic, installable Keeper release tree. |
+| `plugins/physics-simulation-superpowers/` | Deterministic, installable physics release tree. |
+| `test/distribution.test.mjs` | Repository-wide source/release, marketplace, artifact, and CI contracts. |
 
-The release package intentionally contains compiled runtime files and plugin resources, while development sources and tests remain under `source/`.
+For plugin content, `sources/*` is the only hand-maintained source of release bytes. The `plugins/*` directories are deterministic installable outputs produced from their matching source trees and committed so the marketplace can install them. Do not hand-edit `plugins/*`; change the corresponding `sources/*` tree, regenerate the release, and verify byte parity.
 
-## Build and verify from source
+Generated ZIP files and `SHA256SUMS.txt` are GitHub Release assets, not tracked repository files.
 
-Node.js 20 or newer is required.
+## Build and verify
+
+Project Design Keeper requires Node.js 20 or newer:
 
 ```powershell
-cd source
+cd sources/project-design-keeper
 npm ci
 npm run typecheck
 npm run test:ci
@@ -50,14 +58,22 @@ npm run smoke
 npm run package:verify
 ```
 
-Verify the repository distribution contract from the repository root:
+Run the repository distribution contract from the repository root:
 
 ```powershell
 node --test test/distribution.test.mjs
 ```
 
+Run the physics suite from its source root with Python 3.11 or newer:
+
+```powershell
+cd sources/physics-simulation-superpowers
+python -X utf8 -m unittest discover -s tests -p "test_*.py" -q
+python -X utf8 -m unittest tests.test_repository_distribution -q
+```
+
 ## Links
 
-- [Repository](https://github.com/EverfIRE/ProjectDesignKeeper)
-- [Issues](https://github.com/EverfIRE/ProjectDesignKeeper/issues)
+- [Repository](https://github.com/EverfIRE/ProjectDesign)
+- [Issues](https://github.com/EverfIRE/ProjectDesign/issues)
 - [Publisher](https://github.com/EverfIRE)

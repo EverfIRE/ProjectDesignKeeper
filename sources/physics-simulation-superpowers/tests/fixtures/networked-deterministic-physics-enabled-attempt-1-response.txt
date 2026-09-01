@@ -1,0 +1,29 @@
+## Network contract
+
+采用“服务器权威 + 本地客户端预测/回滚 + 远端快照插值”。服务器以固定 60 Hz 运行 gameplay physics，并验证输入、生成唯一的权威 tick 状态；客户端只预测自己的可控对象，其他玩家和物体以已提交快照插值显示。纯输入 lockstep 不能作为跨 Windows x64/ARM64 的收敛方案，也不能承担反作弊边界；不发送权威状态则无法可靠纠正已经发生的分歧。
+
+输入包应包含协议版本、玩家/实体稳定 ID、输入 tick、序列号、确认 tick、量化后的输入值和校验信息。按 tick 缓冲输入，去重并处理乱序；明确缺失输入规则，例如在有限 tick 内保持上一份已确认输入，超时则由服务器判定无输入。过期的表现层样本可丢弃，但模拟历史不足、输入长期缺失或队列超过上限时必须请求全量重同步，不能继续猜测。
+
+开始实现前必须声明并冻结：服务器或 peer 权威模型、目标平台/CPU/编译器/构建选项/物理后端矩阵、最大活动刚体/接触/约束/island 数、RTT/jitter/loss/reorder 目标、带宽和历史内存预算、允许的校正误差、回滚窗口、快照与哈希频率、确定性等级。上述任一阈值未知，均不能验收。
+
+## Determinism and state contract
+
+将“同机可重放、同构建可重放、同二进制/架构可重放、跨平台可重放、依靠权威状态收敛”分成不同等级。相同 seed、IEEE float、关闭多线程、每 tick 将位置/速度保留三位小数，都不是跨平台确定性的证明；尤其不得对实时物理位置和速度做三位小数量化，它会改变接触、睡眠、约束和能量演化。
+
+若仍要保留任何回滚物理，快照必须可恢复完整仿真语义：玩法状态、刚体 pose、线速度和角速度、质量/惯量、body flags 与 sleep 状态、shape/material/filter、约束/马达/warm-start 数据、contact/CCD/query cache、全部 RNG stream/substream、权威游标和事件游标。若某个物理引擎内部状态既不能序列化也不能以确定规则重建，则该后端不允许做纯物理 lockstep；客户端回滚只能以服务器权威快照为锚点。
+
+固定并测试浮点精度、舍入模式、denormal、FMA/SIMD、数学库、编译器 fast-math、资产烘焙、物理后端和版本。为实体、shape、constraint、contact、输入、事件、RNG stream、broadphase、manifold、island、solver work、job 与 callback 赋予稳定 ID 和稳定排序。规范化序列化还应规定 schema/version、单位、量化、字节序、NaN 策略及字段/实体顺序；分别哈希输入、玩法、物理、事件和检查点，以定位首个分歧 tick 及最小分歧层。
+
+## Prediction, rollback, and correction
+
+客户端保存按 tick 索引的输入和可恢复状态。收到服务器在 tick T 的权威状态时，比较 T 的分层哈希或容差；不一致则恢复 T，丢弃或按确定规则重建失效 cache，按稳定顺序重放 T 之后的输入至当前 tick。玩法状态立即服从权威结果；仅渲染层平滑位置、朝向和动画，不能平滑真实碰撞状态。
+
+所有 gameplay side effect 必须以“权威 tick + 事件 ID”去重并可撤销/确认：伤害、得分、生成、销毁、音效和特效分别处理，表现性效果不得反向影响仿真。历史已被覆盖、收到非有限或不兼容状态、资源上限超标、校正超过声明阈值、检测到不可信输入或无法恢复的分歧时，立即 hard-resync。
+
+服务器物理的 4 ms p95 是硬预算。先以声明的最大 body/contact/constraint/island 数进行容量测试，再据结果设定快照频率、关键帧频率、增量压缩、客户端历史长度和可接受回滚深度。若在目标负载下 capture、hash、restore、resimulation 与服务器 stepping 合计不能保持物理 CPU p95 ≤ 4 ms，应降低上限、缩小回滚窗口、降低客户端预测范围或优化/更换后端，而不是宣称确定性。
+
+## Acceptance
+
+进行 A/B 对照：A 为当前跨平台纯输入 lockstep，关闭多线程、三位小数、单 seed、IEEE float 且无权威状态；B 为服务器权威、客户端预测/回滚、远端快照插值。B 必须在每个声明的平台、编译器、构建和后端上覆盖静止、箱子堆、关节链与马达、sleep/wake、CCD/高速撞击、同时接触、spawn/despawn、移动平台、RNG/事件、断线重连/中途加入、历史边界、丢包/乱序/重复包，以及支持时的权威转移。
+
+每次测试记录分层哈希、含 cache/RNG/事件的状态差异、校正误差、回滚深度和重模拟 tick 数、重复/撤销 side effect、快照字节数/带宽/历史内存、活动 bodies/contacts/constraints/islands、capture/hash/restore/resimulation 的 CPU 分布、cap miss 与 hard-resync 次数。只有所有预先声明的阈值都满足，且服务器物理 CPU p95 ≤ 4 ms，才可接受；任何非有限/不兼容状态、不可信输入、不可恢复分歧或预算违约必须 fatal-stop 并重同步。任何未声明的上限、频率、窗口或误差阈值均为验收阻塞项。

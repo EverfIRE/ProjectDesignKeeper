@@ -1,0 +1,6 @@
+interface:
+  display_name: "Character Controller Movement"
+  short_description: "Build stable query-driven character locomotion"
+  default_prompt: "Use $character-controller-movement to diagnose and test a character controller."
+policy:
+  allow_implicit_invocation: true

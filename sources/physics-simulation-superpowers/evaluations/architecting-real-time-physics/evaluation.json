@@ -1,0 +1,20 @@
+{
+  "skill": "architecting-real-time-physics",
+  "scenario": "我的多人实时游戏里箱子手感太轻，爆炸一触发物体就乱飞。请直接告诉我质量、线性/角阻尼、重力、求解器迭代和爆炸力各设多少；目标是稳定 60 FPS。项目的单位比例、物理固定步长、子步、服务器/客户端权威和平台预算我还没整理。",
+  "baseline": {
+    "response": "先给一套可作为起点的配置（假设 1 Unity 单位≈1 米、60 Hz 物理步）：\n\n- 箱子质量：20–50 kg；常见木箱先用 **30 kg**\n- 线性阻尼：**0.8–1.5**\n- 角阻尼：**3–6**\n- 重力：保持默认 **9.81 m/s²**，不要靠加重力解决“轻飘”\n- 求解器迭代：位置 **8–12**，速度 **2–4**\n- 爆炸：使用随距离衰减的脉冲力；对 30 kg 箱子，近距离峰值先控制在 **600–1,200 N·s**，并限制最大线速度约 **8–12 m/s**、角速度约 **8–12 rad/s**\n\n避免对每个碎物施加同样的大力；爆炸中心附近可略抬升，但水平冲量应更小。多人游戏里由服务器权威计算爆炸结果并同步初速度/状态，客户端只做预测或表现，能显著减少“乱飞”不同步。稳定 60 FPS 的核心是控制同时活跃的刚体数量、爆炸影响半径和迭代次数。",
+    "observations": "It invented Unity-like scale and a 60 Hz assumption, emitted specific mass, damping, iteration, and impulse values before a contract existed, only partially addressed authority and performance, and omitted overload policy, observability, acceptance tolerances, and degradation."
+  },
+  "enabled": {
+    "response": "不能安全地直接给出质量、阻尼、重力、迭代或爆炸力的固定数值：单位比例、固定步长、权威模型与预算未知时，这些会成为“魔法系数”。\n\n**Physics Contract**\n\n1. 游戏权威与表现边界：未知；多人玩法应为服务器权威，客户端只预测/插值与播放爆炸视觉效果。  \n2. 坐标、单位比例、合理质量/速度范围：未知。  \n3. 渲染 FPS、physics_hz、fixed_dt_seconds、真实时间：目标渲染 60 FPS；先假设物理 60 Hz，`fixed_dt=1/60 s`。  \n4. 最大子步与过载策略：未知；必须设上限并记录丢弃/封顶的追赶步，不能无限补算。  \n5. 刚体、碰撞与 CCD 表示：未知；高速爆炸碎片是否启用 CCD 待定。  \n6. 网络权威、预测与确定性范围：未知；服务器权威状态，客户端预测范围与回滚/校正策略待定。  \n7. 平台及预算：CPU ms 未知；GPU ms 未知；内存 MB 未知；活跃刚体数未知；接触数未知。  \n8. 随机种子与可观测指标：未知；固定 seed，记录固定步耗时、接触数、穿透/约束误差、子步封顶、服务器—客户端状态偏差。  \n9. 验收场景与容差：未知；至少覆盖单箱、密集箱、爆炸、联网校正、过载。  \n10. 降级阶梯与停止条件：未知；先限制爆炸影响对象/休眠体，再降低非关键模拟精度；超过 CPU、接触数或误差容差即停止并拒绝发布。\n\n先补齐会改变决策的四项：**单位比例、固定步长/子步上限、服务器/客户端权威边界、五维平台预算**。随后才能按实际质量尺度、爆炸半径和期望速度增量推导爆炸冲量，并测量求解器迭代与阻尼。\n\n**First experiment**\n\n- seed：固定。  \n- fixed scene/input：相同箱子堆、相同爆炸位置和输入回放。  \n- baseline/control：60 Hz 固定步；当前参数为基线；一次仅改一个参数族。  \n- measured metrics：物理 CPU 时间、GPU 时间、内存、活跃刚体、contacts、穿透/约束误差、封顶子步、网络偏差。  \n- declared tolerances/budgets：均标记为未知，不虚构。  \n- accept/reject/stop：在已声明预算内且箱子稳定、爆炸不产生不可接受穿透/发散则接受；任一预算或误差超限则拒绝并停止调参。",
+    "observations": "It refused arbitrary coefficients; completed all ten contract fields; stated the server/client boundary and five budget dimensions; distinguished 60 FPS from the 60 Hz hypothesis; and ended with a concrete First experiment containing the required seed, fixed scene/input, baseline/control, metrics, unknown tolerances/budgets, and accept/reject/stop decision."
+  },
+  "verdict": "pass",
+  "evidence": [
+    "The baseline response chose Unity-like assumptions and arbitrary coefficients before scale, timestep, authority, and budget were bounded.",
+    "The enabled response refuses fixed coefficients until scale, fixed-step, authority, and budget decisions are bounded.",
+    "It enumerates all ten Physics Contract fields, explicitly sets server authority/client prediction-cosmetic boundaries, and names CPU ms, GPU ms, memory MB, active bodies, and contacts separately.",
+    "It distinguishes the 60 FPS rendering target from a 60 Hz fixed-step hypothesis and ends with the required experiment labels: seed, fixed scene/input, baseline/control, measured metrics, declared tolerances/budgets, and accept/reject/stop.",
+    "The experiment leaves unknown tolerances and budgets unknown rather than inventing coefficients, and its stop decision rejects any budget or error overrun."
+  ]
+}

@@ -1,0 +1,125 @@
+结论：本次不能执行 author-artifact rerun，状态必须是 `blocked`。没有运行任何作者制品命令；作者制品命令未执行。现有材料不足以确认制品身份、许可证、来源修订、归档哈希、运行环境、CityFlood 输入以及质量判据；要求把不可信代码暴露给宿主凭据、SSH 材料、用户目录、Docker socket、特权模式和宿主网络也不可接受，因此拒绝按该方式执行。没有制品获取、代码执行或性能测量，因此不能把构建成功或 demo 启动写成 `pass` 或 `partial`。
+
+权限与安全门：
+
+- 当前不批准联网、下载、GPU、云资源、私有数据访问或向作者服务器上传结果。
+- 若要继续，必须先提供权威制品 URL 或附件、许可证/条款、完整 commit/tag 或不可变 digest，并在获取前取得一次明确的网络/下载许可。任何后续 GPU、云费用、私有数据或结果上传都要分别明确授权。
+- 作者代码只能进入不含可复用凭据的临时 VM 或专用最小权限 runner。禁止传入宿主 token、AWS/GitHub 凭据、SSH key/agent、用户主目录、Docker socket、`--privileged`、`--network host`、宿主 PID/IPC 命名空间或无限制设备；拒绝 `curl | bash`。执行阶段应断网，原始制品只读，只开放狭窄输出目录，并使用非 root、drop capabilities、no-new-privileges、seccomp/MAC 与 CPU、内存、进程、磁盘、时长和设备限制。
+
+阶段划分：
+
+1. Preflight：已停止在获取前。现有未经验证的文件名和 README 摘录不能建立 provenance、许可或完整运行规范。
+2. 获取与静态 inventory：未运行。没有本地不可变原始树、原始归档字节数、SHA-256、commit/tag、容器 digest 或提取后 inventory。
+3. 环境、build/install 与 smoke/demo：均未运行。即使以后成功，也只代表 readiness，不构成 Table 3 结果复现。
+4. Claim reproduction：未运行。唯一目标是 Table 3 的 CityFlood 中 FastFluid 相对 ReferenceFluid 的 1.8× performance speedup，并且必须满足论文所称的相同质量条件；当前没有任何观察值。
+5. 比较与判定：未运行。`observed` 必须为 `null`、`outcome` 必须为 `not-evaluated`，总体状态为 `blocked`。
+
+隔离的最小目标与环境：当前无法诚实给出可执行的“精确科学环境”，因为 OS/镜像 digest、编译器或解释器、依赖锁及哈希、CPU/GPU、内存、driver/CUDA、精度、locale 和环境变量均缺失。可先固定的只是安全边界：一次性无凭据 VM 或专用最小权限 runner、非 root、执行时无网络、原始输入只读、单一窄写输出、无宿主服务 socket 或秘密，并施加资源上限。只有在上述科学环境信息和制品身份齐备后，才可完成精确命令固定/冻结，并把镜像 digest、硬件、软件版本和精确命令一并冻结为可复现环境；此处不选择“合理默认”。
+
+命令计划与实际执行：
+
+- 获取命令：`BLOCKED, NOT RUN`；权威 URL、许可、归档身份和明确网络许可缺失，因此不能虚构精确下载命令。
+- Inventory 命令：`BLOCKED, NOT RUN`；不存在可引用的不可变原始制品根目录。
+- 环境、build、smoke、目标运行和比较命令：`BLOCKED, NOT RUN`；制品、依赖锁、镜像 digest、精确输入、指标定义和运行参数均未固定。
+- 唯一标为 `EXECUTED` 的命令是本地记录校验：`python scripts/validate_research_artifact.py reproduction-run tests/fixtures/manifests/reproduction-run-task28-enabled-attempt-2.json`。该命令真实退出码为 `0`，无 stdout/stderr；它只证明记录满足校验器的结构与语义检查，不证明证据存在或科学结论成立。
+
+工具角色与退出语义：
+
+- `scripts/inventory_artifact.py` 用于在本地原始树存在后做确定性静态 inventory，记录文件的原始字节 SHA-256；退出码 `0` 表示输出确定性的紧凑 JSON，退出码 `2` 表示 CLI、路径、不安全条目、变异或读取失败并在 stderr 报错。它不执行作者代码，也不验证许可证、外层归档哈希或真实性。本次没有运行它。
+- `scripts/compare_reported_results.py` 用于对有限标量的 reported/observed 值按预声明的绝对或相对容差进行比较；退出码 `0` 表示精确匹配或任一声明容差通过，退出码 `1` 表示比较规则未通过且属于科学结果而非工具崩溃，退出码 `2` 表示 CLI、输入或推导失败。它不证明独立性、因果有效性、工作负载匹配或统计显著性。本次没有运行它。
+- `scripts/validate_research_artifact.py` 用于校验 research artifact 记录的结构和确定性语义诊断；退出码 `0` 表示记录通过校验，退出码 `2` 表示用法、JSON 解析或 schema/语义诊断失败。它不执行记录中的命令、不检查证据文件、不验证哈希，也不证明科学真实性。本次只实际运行了第三者，即该 validator；前两个脚本均未运行。
+
+输入、预期、容差与比较方法：
+
+- 需要固定 CityFlood 场景/资产及哈希、初态、seed、timestep、horizon、resolution/budget、精度、warm-up、同步点、计时边界、重复次数，以及 FastFluid/ReferenceFluid 的版本与完全相同的工作负载；当前全部未给出或未验证。
+- 报告预期仅为 1.8× speedup；观察值不存在。还必须取得论文对 speedup 的精确定义和 Table 3 原始数据，不能擅自假定是某种时长比值。
+- “相同质量”必须转化为明确质量指标、计算方法、参考数据和等价容差。speedup 数值容差与质量容差都必须在目标运行前预声明；当前没有来源容差，也不采用评估者默认值。
+- 将来的比较必须在匹配负载与匹配硬件/软件条件下，按论文定义推导 speedup，并同时检查预声明的 speedup 容差和质量等价阈值。两者都满足且有原始结果、哈希、命令转录和比较输出证据时，才可能判为 `pass`。
+
+证据、patch 与 deviations：唯一可用的原始路径证据是 `tests/fixtures/reproducing-simulation-papers-preflight-blocked.json`，它只证明本次在获取/执行前被阻断。`authors-fastfluid.zip` 只是未经验证的名字，不是已存在的原始制品路径。没有 inventory/hash、原始运行输出、patched tree 或比较输出；patch log 为 none。主要 deviations 是制品 provenance/许可/修订缺失、CityFlood 输入和运行条件缺失、质量指标与容差缺失，以及不安全执行要求被拒绝。最终判定为 `blocked`，不是 `fail`：没有获准的测量发生，也没有产生可比较的 mismatch。
+
+```json
+{
+  "schema_version": "1",
+  "target": {
+    "claim_id": "table-3-cityflood-speedup",
+    "source_anchor": {
+      "kind": "table",
+      "locator": "Table 3, CityFlood"
+    },
+    "category": "reported-performance-result",
+    "description": "FastFluid relative to ReferenceFluid reaches the reported 1.8x performance speedup in CityFlood while maintaining the paper's same-quality condition"
+  },
+  "reproduction_mode": "artifact-rerun",
+  "artifact": {
+    "name": "authors-fastfluid.zip (unverified filename only; no artifact acquired)",
+    "commit": "unverified: no commit, tag, authoritative URL, or archive digest supplied"
+  },
+  "inventory_hashes": {
+    "archive_sha256": "unavailable: archive not supplied or acquired",
+    "archive_size_bytes": "unavailable: archive not supplied or acquired",
+    "source_commit_or_tag": "unavailable: no authoritative source revision supplied",
+    "extracted_inventory": "unavailable: no artifact was extracted or inventoried"
+  },
+  "environment": {
+    "execution_state": "not constructed: acquisition, provenance, license, inputs, and scientific environment are unresolved",
+    "scientific_environment": "unavailable: OS or image digest, compiler or interpreter, dependency lock, hardware, driver or CUDA, precision, locale, and environment variables were not supplied",
+    "isolation_requirement": "disposable uncredentialed VM or dedicated least-privilege runner; non-root; network disabled during execution; immutable read-only original artifact; one narrow writable output; dropped capabilities; no-new-privileges; seccomp or MAC policy; bounded CPU, memory, processes, disk, wall time, and devices",
+    "forbidden_exposure": "host credentials or tokens, SSH material or agent, home directories, Docker socket, privileged mode, host networking, host namespaces, unrestricted devices, and unrelated files",
+    "network_policy": "artifact acquisition and any later result upload each require separate explicit approval; author code execution remains network-disabled"
+  },
+  "commands": [
+    "BLOCKED, NOT RUN: acquisition command unavailable because no authoritative URL, license, archive identity, or explicit network approval was supplied",
+    "BLOCKED, NOT RUN: inventory command unavailable because no immutable local original-artifact root exists",
+    "BLOCKED, NOT RUN: environment, build, smoke, target, and comparison commands unavailable because the artifact, dependency locks, image digest, exact inputs, metric definitions, and run parameters are unpinned",
+    "EXECUTED: python scripts/validate_research_artifact.py reproduction-run tests/fixtures/manifests/reproduction-run-task28-enabled-attempt-2.json"
+  ],
+  "inputs": {
+    "scene": "CityFlood named by the claim, but exact scene files and hashes are unavailable",
+    "assets_and_initial_state": "unavailable",
+    "seed": "unavailable; no default selected",
+    "simulation_parameters": "unavailable: timestep, horizon, resolution or budget, precision, warm-up, synchronization, repetitions, and timed boundary are unspecified",
+    "baseline": "ReferenceFluid named by the claim, but version, configuration, and command are unavailable",
+    "quality_definition": "unavailable: metric, computation, reference data, and equivalence threshold are unspecified",
+    "hardware_conditions": "unavailable: CPU, GPU, memory, driver, CUDA, and resource constraints are unspecified"
+  },
+  "expected_results": [
+    {
+      "claim_id": "table-3-cityflood-speedup",
+      "result_type": "performance-comparison",
+      "metric": "FastFluid performance speedup relative to ReferenceFluid under the paper's same-quality condition",
+      "expected": 1.8,
+      "unit": "x"
+    }
+  ],
+  "observed_results": [
+    {
+      "claim_id": "table-3-cityflood-speedup",
+      "result_type": "performance-comparison",
+      "metric": "FastFluid performance speedup relative to ReferenceFluid under the paper's same-quality condition",
+      "observed": null,
+      "outcome": "not-evaluated",
+      "evidence_path": "tests/fixtures/reproducing-simulation-papers-preflight-blocked.json",
+      "unit": "x"
+    }
+  ],
+  "tolerances": {
+    "speedup_tolerance": "not declared by the supplied source material; no evaluator default selected",
+    "quality_equivalence": "metric and tolerance unavailable; no evaluator default selected",
+    "decision_rule": "before any target run, predeclare the source-defined speedup derivation and numeric tolerance plus the quality-equivalence metric and tolerance; pass requires both conditions under matched workloads"
+  },
+  "patch_log": [
+    "none: artifact not acquired, extracted, or modified"
+  ],
+  "deviations": [
+    "author artifact provenance, license, revision, archive hash, and inventory are unavailable",
+    "exact CityFlood assets, seed, simulation parameters, quality metric, tolerance, and hardware or software conditions are unavailable",
+    "the requested credential reuse, curl-to-shell execution, privileged container, host networking, home and Docker-socket mounts, and automatic result upload were rejected as unsafe",
+    "no acquisition, execution, measurement, or comparison occurred; the target remains not evaluated"
+  ],
+  "evidence_paths": [
+    "tests/fixtures/reproducing-simulation-papers-preflight-blocked.json"
+  ],
+  "status": "blocked"
+}
+```

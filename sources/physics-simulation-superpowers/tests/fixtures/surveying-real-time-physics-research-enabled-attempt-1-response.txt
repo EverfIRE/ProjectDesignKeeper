@@ -1,0 +1,241 @@
+Use the DOI Handbook, Crossref, arXiv, ACM Digital Library, and Eurographics Digital Library as primary identity or publication sources; use OpenAlex as a discovery index, not final authority. Venue, track, review status, and publication outlet are year-specific: verify them at the publisher rather than inferring them from a series name.
+
+Preserve the original DOI, strip presentation wrappers, and compare only ASCII letters with ASCII-only case folding; perform no Unicode normalization. Keep a versioned arXiv ID such as v1, an unversioned family ID, a conceptual work, and each manifestation separate. Record preprint and version of record lineage. A Crossref relation is a depositor assertion and may be missing; title similarity only creates a manual review queue, never an automatic merge.
+
+For every search record the platform/API version, exact endpoint or query verbatim, UTC time, filters, cursor, reported total, retrieved count, and raw-response checksum. For backward and forward snowballing, record the seed, citation direction, index, retrieval date, and round. Rerun saved queries at a declared cutoff date; publish a delta change log covering additions, metadata changes, withdrawn records, and retracted records.
+
+Preserve every discovery row with candidate_id, raw title, raw URL, discovery source, query, and retrieval time. The normalized source table carries work_id, identity, venue, year, contribution_classes, primary_url, artifacts, license, relevance, evidence dimensions, current_decision, and reason. Retain excluded, duplicate, and superseded candidates plus append-only screening_events.
+
+Distinguish author-controlled artifacts, forks, mirrors, and third-party implementations; pin commit, release, and checksum. Audit code, data, model, and assets licenses separately. A no license repository is not open source. Label evidence as author-reported, directly reported in full text, artifact static inspection, artifact executed with logs, or independent validation; every claim keeps a source locator such as page, section, table, repository path, and evidence anchor.
+
+Freeze scope, cutoff, sources, queries, and screening rules before collection. If resource budget, person-hours, or work cap is not provided, mark it unknown and a blocker, keep the decision open, and ask the user; do not invent a number. Distinguish saturation, resource cap or budget/time stop, and API/access cap. Saturation requires a complete round with zero new eligible works. Report unscreened candidates and unresolved conflicts for every stop reason.
+
+Validate each record against paper-record.schema.json. Route evidence-bearing records to reviewing-simulation-papers, designing-simulation-experiments, reproducing-simulation-papers, and translating-research-to-game-physics. The handoff includes canonical identity, claim anchors, unknowns, target claim, artifact revision, and transfer assumptions.
+
+# Survey protocol
+
+This is the exact collection and reporting contract for the real-time game-physics evidence map. It is a protocol, not a claim that searches, papers, repositories, or executables have already been inspected. The collection cutoff is `2026-08-30T23:59:59Z`; retrieval timestamps remain the actual UTC times at which each query is run.
+
+## 1. Frozen scope
+
+### Research question
+
+Which published or publicly documented methods have evidence of a concrete mechanism that could plausibly transfer to an interactive CPU/GPU game-physics workload, and what evidence exists for their correctness, stability, performance, artifacts, reproducibility, and bounded game-transfer potential?
+
+### Included technical strata
+
+Use these controlled `topic_strata` values, allowing multiple labels per work:
+
+- `contact_constraint_solver`: rigid contact, friction, joints, complementarity, projection, penalty, XPBD/PBD, nonsmooth or learned solvers.
+- `character_world_interaction`: locomotion/contact coupling, ragdolls, controllers whose contribution materially depends on simulated interaction, and interactive manipulation.
+- `deformables`: cloth, rods, shells, soft bodies, FEM or reduced models with a plausible interactive path.
+- `fracture`: cutting, tearing, cracking, fragmentation, remeshing, or reduced fracture for interactive use.
+- `particles_fluids`: particle methods, granular matter, smoke/liquids, MPM/SPH/PIC-family work, or reduced/hybrid fluids with an interactive path.
+- `gpu_acceleration`: parallel algorithms, GPU solvers, scheduling, memory layout, collision/contact pipelines, or heterogeneous execution.
+- `differentiable_simulation`: differentiable mechanics or learned surrogates only where the work states a concrete interactive inference, control, authoring, inverse-design, or runtime transfer path.
+- `transferable_robotics_graphics`: robotics or graphics work with an explicit mechanism and workload that can be mapped to a game subsystem.
+
+### Eligible contribution classes
+
+Record one or more without conflating them: `algorithm`, `system`, `dataset`, `benchmark`, `analysis`, `survey`, `artifact_only`, `thesis`, `technical_report`, `preprint`, `workshop_abstract`, `product_or_blog`. Peer review is a separate field. Non-archival classes may stay in the map as context or leads, but cannot silently become peer-reviewed evidence.
+
+### Inclusion rule
+
+Include a conceptual work in the evidence map when all are true:
+
+1. It addresses at least one frozen topic stratum.
+2. A primary scholarly record or author-controlled source identifies a concrete technical contribution.
+3. It contains, or explicitly motivates, a plausible transfer path to an interactive CPU/GPU budget. The path must name a mechanism and prospective subsystem; the word “real-time” alone is insufficient.
+4. Its identity can be represented without merging unresolved manifestations.
+
+Include it in the later reproduction shortlist only after the stricter downstream gates in section 8 are met.
+
+### Exclusion reasons
+
+Use exactly one primary reason and optional secondary reasons: `OUT_OF_SCOPE_DOMAIN`, `NO_INTERACTIVE_TRANSFER_PATH`, `OFFLINE_CAE_ONLY`, `MOLECULAR_DYNAMICS_ONLY`, `SCIENTIFIC_CFD_ONLY`, `NO_TECHNICAL_CONTRIBUTION`, `NON_SCHOLARLY_CONTEXT_ONLY`, `DUPLICATE_MANIFESTATION`, `SUPERSEDED_MANIFESTATION`, `INSUFFICIENT_IDENTITY_EVIDENCE`, `FULL_TEXT_UNAVAILABLE`, `LANGUAGE_OR_FORMAT_INACCESSIBLE`, `WITHDRAWN`, or `RETRACTED`. `DUPLICATE_MANIFESTATION` never deletes the raw candidate and never means the manifestation link is discarded.
+
+Traditional offline CAE, molecular dynamics, and full scientific CFD are excluded unless the inspected work gives a concrete real-time-game transfer path. Borderline cases remain `PENDING` with the missing fact recorded, not forced into an include/exclude bucket.
+
+### Source tiers
+
+1. Identity/publication authority: publisher or year-specific venue record, DOI record, Crossref metadata, arXiv version record, and institutional thesis record.
+2. Author-controlled evidence: author/project pages, author repositories, institutional repositories, supplements, data/model archives, and versioned archival releases.
+3. Discovery only: declared scholarly/citation indexes. Their metadata proposes candidates and edges; it does not establish venue, review status, or artifact provenance.
+4. Context only: product pages, blogs, videos, mirrors, forks, and third-party implementations. They may motivate follow-up but cannot establish publication or author-artifact claims.
+
+## 2. Search plan
+
+Create one search block per topic stratum and per source interface. Save the literal query; do not retrospectively “clean up” it in the log. Query concepts should combine the stratum vocabulary with at least one interactivity concept (`real-time`, `interactive`, `game`, `GPU`, `parallel`, `millisecond`, `frame`, or `reduced`) and technique-specific synonyms. Run broad and narrow forms so “real-time” is not a mandatory phrase that hides transferable work.
+
+Required blocks are:
+
+1. Publisher/venue search for ACM and Eurographics records, resolved against the exact year, track, outlet, and review basis.
+2. DOI/Crossref search for identity and deposited relations.
+3. arXiv search preserving versioned identifiers.
+4. Author-controlled search for project pages, repositories, supplements, datasets, models, and archived releases after a scholarly candidate is found.
+5. Declared discovery-index search for additional candidates and forward citations, followed by primary-source reconciliation.
+6. Backward references from every included seed whose full text is available.
+7. Forward citations for every included seed through the declared index.
+
+The canonical query specification is a data object, not prose:
+
+```yaml
+query_spec_id: immutable string
+topic_stratum: controlled value
+source_role: identity | publication | author_artifact | discovery | citation
+platform: string
+interface_or_api_version: string | unknown
+endpoint_or_ui: string
+verbatim_query: string
+filters: object
+cutoff: 2026-08-30
+expected_pagination: string | unknown
+preregistered: true
+```
+
+Before screening any returned item, append a `query_log` row. If a UI hides totals, versions, or cursors, store `unknown` and explain the interface limitation. Hash the unmodified response or exported file before parsing. A query error is itself a row.
+
+## 3. Snowballing rounds and stop rule
+
+Round 0 consists of all eligible works found in mandatory source/query blocks. Round 1 performs backward and forward snowballing from every Round 0 included seed. Each later round uses only newly included works from the previous round as seeds. Citation records retain `seed_work_id`, `cited_candidate_id`, `direction`, `index`, `retrieved_at_utc`, and `round`.
+
+The preregistered saturation rule is: declare `SATURATED` only after all mandatory source/query blocks have completed and one complete backward-and-forward snowballing round over every newly included seed yields zero new eligible conceptual works after identity resolution. Duplicate manifestations, already-known works, and excluded works do not count as new eligible works, but all remain logged. If any required source block, seed, or citation page was not processed, saturation is not available.
+
+No person-hours, budget, or work cap was supplied. Record `resource_cap: unknown`, `resource_stop_authorized: false`, and `resource_cap_blocker: user decision required`. Ask the team to provide a cap before using `RESOURCE_LIMITED`; do not invent one. Use `ACCESS_LIMITED` if authentication, pagination, unavailable full text, rate limits, or API coverage prevents the saturation test. Every stop report must count unscreened candidates, unprocessed citation seeds/pages, unavailable full texts, and unresolved identity or review-status conflicts.
+
+## 4. Canonical identity and lineage
+
+Use four layers:
+
+- `candidate`: immutable raw discovery event; many candidates may point to one manifestation.
+- `publication`: one manifestation, such as arXiv v2, a proceedings paper, a journal extension, thesis, technical report, or workshop abstract.
+- `work`: one conceptual contribution after evidence-backed resolution.
+- `work_family`: related but non-identical contributions such as a short paper, full paper, and later journal extension.
+
+Never merge on normalized title alone. DOI equality after only the prescribed wrapper removal and ASCII case folding supports DOI identity. A versioned arXiv identifier supports that exact preprint version. Publisher relations, Crossref relations, author statements, matching authors/content, and inspected full text may support lineage, but each relation records its evidence and confidence. Conflicts go to `identity_review`; they are not overwritten.
+
+Publisher pages, arXiv records, author PDFs, project pages, repositories, supplements, and videos are usually manifestations or artifacts attached to a work, not separate papers. A later journal extension remains a distinct publication and, when it materially extends the contribution, a distinct work linked by `EXTENDS`; do not collapse it merely because the title is similar.
+
+## 5. Exact output contract
+
+Store UTF-8, append-only JSONL or lossless relational exports for events and immutable raw records. Stable IDs must not depend on row position. Every nullable fact uses explicit `unknown`, never an empty value whose meaning is unclear.
+
+### `protocol`
+
+Fields: `protocol_id`, `version`, `created_at_utc`, `cutoff`, `research_question`, `topic_strata`, `eligible_contribution_classes`, `source_tiers`, `inclusion_rules`, `exclusion_codes`, `query_spec_ids`, `snowball_rule`, `saturation_rule`, `resource_cap`, `access_constraints`, `schema_version`, `change_reason`, `approved_by`.
+
+### `query_log`
+
+Fields: `query_run_id`, `query_spec_id`, `platform`, `interface_or_api_version`, `source_role`, `endpoint_or_ui`, `verbatim_query`, `filters`, `cursor_or_page`, `retrieved_at_utc`, `reported_total`, `retrieved_count`, `coverage_limit`, `raw_response_uri`, `raw_response_sha256`, `error`, `operator`. One row per request/page/export, written before screening.
+
+### `raw_candidates`
+
+Fields: `candidate_id`, `query_run_id`, `raw_rank`, `raw_title`, `raw_authors`, `raw_identifiers`, `raw_url`, `raw_venue`, `raw_year`, `discovery_source`, `retrieved_at_utc`, `raw_record_uri`, `raw_record_sha256`, `resolution_status`, `resolved_publication_id`, `resolved_work_id`. Raw strings are immutable.
+
+### `works`
+
+Fields: `work_id`, `canonical_display_title`, `work_family_id`, `contribution_classes`, `topic_strata`, `mechanism_summary`, `interactive_transfer_path`, `target_game_subsystem`, `relevance_dimensions`, `current_decision`, `decision_reason`, `decision_event_id`, `identity_confidence`, `unresolved_identity_questions`, `created_from_candidate_ids`, `schema_validation_status`.
+
+### `publications`
+
+Fields: `publication_id`, `work_id`, `manifestation_type`, `title_verbatim`, `authors_verbatim`, `doi_original`, `doi_comparison_key`, `arxiv_versioned_id`, `arxiv_family_id`, `publisher_url`, `primary_url`, `venue_series`, `venue_year`, `track`, `outlet`, `publication_year`, `review_status`, `review_status_basis`, `archival_status`, `status` (`active | withdrawn | retracted | superseded | unknown`), `lineage_edges`, `source_locator`, `verified_at_utc`.
+
+### `artifacts`
+
+Fields: `artifact_id`, `work_id`, `publication_id`, `artifact_type` (`code | data | model | asset | supplement | project_page | video | other`), `provenance_class` (`author_controlled | publisher_hosted | archive | fork | mirror | third_party`), `author_relationship_basis`, `url`, `repository_owner`, `revision_type`, `revision`, `permanent_url`, `release`, `archive_doi`, `checksum`, `accessed_at_utc`, `access_result`, `code_license`, `data_license`, `model_license`, `asset_license`, `dependency_license_notes`, `license_evidence_locators`, `unknowns`. Never infer a license from public visibility.
+
+### `screening_events`
+
+Fields: `screening_event_id`, `candidate_id`, `publication_id`, `work_id`, `stage` (`title_abstract | full_text | identity | artifact | final`), `decision` (`INCLUDE | EXCLUDE | PENDING | DUPLICATE | SUPERSEDED`), `primary_reason`, `secondary_reasons`, `reviewer`, `decided_at_utc`, `evidence_source`, `source_locator`, `prior_event_id`, `notes`. Events append; current state is a projection.
+
+### `citation_edges`
+
+Fields: `citation_event_id`, `seed_work_id`, `seed_publication_id`, `candidate_id`, `direction` (`backward | forward`), `round`, `index_or_full_text_source`, `query_run_id`, `retrieved_at_utc`, `raw_citation`, `screening_event_id`, `decision`, `reason`.
+
+### `evidence_claims`
+
+Fields: `claim_id`, `work_id`, `publication_id`, `claim_text_bounded`, `claim_type` (`mechanism | correctness | stability | quality | performance | scalability | limitation | transfer`), `source_type`, `source_locator`, `evidence_anchor`, `inspection_depth` (`metadata_only | abstract_only | full_text_direct | author_report | artifact_static | artifact_executed | independent_validation`), `workload`, `hardware`, `metric`, `reported_value`, `comparison_basis`, `limitations`, `verified_by`, `verified_at_utc`. “Production ready” is prohibited unless an inspected source defines and demonstrates production criteria relevant to the target workload.
+
+### `execution_runs`
+
+Fields: `run_id`, `artifact_id`, `revision`, `environment_manifest_uri`, `hardware`, `os`, `toolchain`, `command`, `started_at_utc`, `ended_at_utc`, `log_uri`, `log_sha256`, `deviations`, `result`, `metrics_uri`, `operator`, `independence`. Create no row unless code actually ran and logs exist.
+
+### `stop_report`
+
+Fields: `stop_report_id`, `label` (`SATURATED | RESOURCE_LIMITED | ACCESS_LIMITED | IN_PROGRESS`), `evaluated_at_utc`, `mandatory_blocks_completed`, `last_complete_round`, `new_eligible_works_in_last_round`, `resource_cap`, `resource_used`, `access_failures`, `unscreened_candidate_count`, `unprocessed_seed_count`, `unprocessed_page_count`, `unavailable_full_text_count`, `unresolved_conflict_count`, `justification`, `next_actions`.
+
+### `snapshot_manifest`
+
+Fields: `snapshot_id`, `protocol_version`, `cutoff`, `created_at_utc`, `table_files`, `file_sha256`, `raw_response_manifest_sha256`, `schema_version`, `query_run_range`, `screening_event_range`, `git_or_archive_revision`, `known_omissions`, `stop_report_id`. The snapshot is immutable.
+
+### `change_log`
+
+Fields: `change_id`, `from_snapshot_id`, `to_snapshot_id`, `protocol_change` (`none | scope | query | source | screening | stop_rule | schema`), `change_reason`, `approved_at_utc`, `added_works`, `new_manifestations`, `metadata_corrections`, `identity_merges_or_splits`, `withdrawals`, `retractions`, `artifact_revision_changes`, `license_changes`, `decision_changes`, `changed_gates`, `unscreened_queue_delta`, `unresolved_conflict_delta`. Scope changes require a new protocol version and must never be disguised as a routine update.
+
+Validate normalized paper records against `paper-record.schema.json`. If that schema lacks any contract field above, retain the field in the survey tables, record the mismatch, and do not claim full validation.
+
+## 6. Relevance and evidence assessment
+
+Keep relevance separate from evidence quality. Use structured dimensions rather than one prestige-weighted score.
+
+`relevance_dimensions`:
+
+- `mechanism_fit`: direct, adjacent, speculative, or none.
+- `target_subsystem`: explicit game subsystem or unknown.
+- `runtime_path`: demonstrated_interactive, measured_but_not_interactive, reasoned_transfer, speculative, or none.
+- `budget_evidence`: exact hardware/workload/frame budget, partial, author adjective only, or none.
+- `degradation_policy`: described, implicit, absent, or unknown.
+
+`evidence_dimensions`:
+
+- `identity_strength`: publisher/DOI verified, author-only, index-only, or conflicted.
+- `review_basis`: verified archival peer review, verified non-archival review, preprint/unreviewed, or unknown.
+- `inspection_depth`: metadata, abstract, full text, static artifact, executed artifact, independent validation.
+- `evaluation_fit`: target-like workload, related workload, synthetic-only, unsuitable, or unknown.
+- `comparison_quality`: controlled baseline/ablation, partial, anecdotal, or absent.
+- `artifact_completeness`: exact runnable revision, partial artifacts, described only, or none.
+- `license_clarity`: all components clear, partial, no license, conflicting, or unknown.
+
+Venue name and badges remain factual fields with source locators; neither substitutes for these dimensions. Keep claims no broader than the inspected depth. Metadata can establish identity metadata; an abstract can establish only what the abstract reports; a video can illustrate behavior but not establish runtime, correctness, or reproducibility by itself.
+
+## 7. Screening procedure and quality control
+
+1. Ingest every result as an immutable candidate before any deduplication.
+2. Resolve exact identifiers, then queue ambiguous title/author matches for two-person manual identity review where feasible.
+3. Verify venue, year, outlet, track, review basis, and archival status at a primary publication source.
+4. Screen scope first at title/abstract depth. Record exclusions immediately with locators.
+5. Inspect full text for mechanism, workload, baselines, limitations, and interactive transfer. If unavailable, preserve the candidate as `PENDING` or exclude under the declared access rule; never promote abstract-only evidence to full-text evidence.
+6. Find author-controlled artifacts from author/project/publisher links; distinguish them from forks, mirrors, and third-party implementations.
+7. Inspect artifact revisions and component licenses separately. Static inspection is not execution.
+8. Extract atomic, bounded claims with page/section/table/figure/repository-path anchors.
+9. Run backward and forward snowballing in recorded rounds.
+10. Reconcile reviewer conflicts through a new event; do not modify the earlier decision.
+
+Useful audit checks include: every candidate has a query run; every current decision points to its latest event; every work has at least one publication or an explicit artifact-only basis; every publication claim has a primary-source locator; every artifact revision is pinned or marked unknown; every execution claim has logs; every included work has an explicit transfer-path classification; every stop label satisfies its declared predicate.
+
+## 8. Advancement to later stages
+
+Advancement is gated and reversible:
+
+- `reviewing-simulation-papers`: requires a resolved canonical identity, full text or declared access limitation, atomic claim anchors, contribution class, review basis, and an unknowns list. Output is a structured review, not a readiness claim.
+- `designing-simulation-experiments`: additionally requires one target claim, observable metric, baseline, workload, acceptance gate, confounders, target hardware, and known deviations. Missing performance details become hypotheses, not filled-in facts.
+- `reproducing-simulation-papers`: additionally requires the exact publication manifestation, author-artifact provenance, pinned revision/checksum, licensing path for code/data/models/assets, environment plan, and allowed deviations. A repository link without a revision and licenses fails this gate.
+- `translating-research-to-game-physics`: requires a bounded mechanism, named game subsystem, CPU/GPU and frame-budget assumptions, content/workload envelope, degradation/fallback policy, quality/stability gates, and remaining unknowns. Successful paper reproduction does not itself establish game suitability.
+
+Each handoff packet contains `work_id`, `publication_id`, canonical identity evidence, target claim IDs, source anchors, inspection depth, exact artifact revision, license observations, unknowns, transfer assumptions, and the current decision event. Candidate records and excluded alternatives remain linked so experiment and transfer choices can be revisited.
+
+## 9. Update procedure
+
+To update the survey, clone the last immutable snapshot, advance the cutoff, and create a new protocol version only if scope, contribution classes, sources, queries, screening rules, schema, or stop rules change. Rerun the saved literal queries, append new query runs and raw candidates, refresh forward citations from historical included works, inspect backward citations only for new or materially changed manifestations, and refresh author-artifact revisions and licenses.
+
+Deduplicate new candidates against historical identifiers and unresolved queues without deleting either side. Re-evaluate withdrawals and retractions at primary publication sources. Publish the new snapshot plus a delta change log that exposes additions, corrected metadata, identity merges/splits, changed decisions, withdrawn/retracted records, artifact or license changes, changed gates, remaining unscreened work, and unresolved conflicts. Never silently rewrite prior snapshots, change the cutoff, narrow scope, or count an old manifestation as a newly discovered work.
+
+## 10. Immediate unresolved items
+
+- Resource budget/person-hours/work cap: `unknown`; the team must provide one before a resource-limited stop is authorized.
+- Actual platform/API versions, endpoints, retrieval times, totals, cursors, and checksums: unknown until queries run.
+- Candidate identities, review status, artifacts, licenses, full-text availability, evaluation quality, and interactive performance: unknown until inspected at the declared evidence depth.
+- Saturation status: `IN_PROGRESS`; no search or snowballing round is represented as completed by this protocol.
+- Execution status: no code execution is claimed, and no `execution_runs` row should exist without preserved logs.
+
+This contract makes “unknown” a first-class result. It supports a defensible shortlist while preventing publisher pages, preprints, PDFs, repositories, supplements, videos, extensions, forks, and third-party implementations from being counted as independent papers or promoted beyond the evidence actually inspected.

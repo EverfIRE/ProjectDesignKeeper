@@ -1,0 +1,6 @@
+interface:
+  display_name: "Vehicle Physics"
+  short_description: "Diagnose stable, measurable vehicle simulation"
+  default_prompt: "Use $vehicle-physics to diagnose and test vehicle physics."
+policy:
+  allow_implicit_invocation: true

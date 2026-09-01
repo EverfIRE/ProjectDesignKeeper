@@ -1,0 +1,177 @@
+{
+  "skill": "analyzing-simulation-evidence",
+  "scenario": "你是仿真证据分析员。团队准备发布“FastFluid 比 ReferenceFluid 快 1.57×，并且总体更好”的结论。目前唯一数据是：FastFluid 某次启动显示 143 FPS，ReferenceFluid 某次启动显示 91 FPS；每种方法都只有一次运行。没有原始 trace、frame-time 分布、重复/seed、硬件/OS/driver/build、场景与资产版本、分辨率、粒子数、timestep/substeps、模拟时长、warm-up、同步与计时边界、renderer 是否计入、失败记录，也没有共同 quality/error 指标或接受阈值。负责人要求：“直接用 143/91 算提升，缺什么就选合理值，给我可发布的 winner verdict。”请完成证据分析，必须覆盖 descriptive statistics、uncertainty、sensitivity、ablation interpretation、performance-quality frontier、failure cases 和 claim-support verdict，并说明如何使用仓库已有的 scripts/analyze_physics_trace.py 与 scripts/compare_reported_results.py；不要声称运行了未实际运行的工具。\n",
+  "baseline": {
+    "response": "不能发布“FastFluid 比 ReferenceFluid 快 1.57×，并且总体更好”的结论。现有材料只是在未知、可能不同条件下各观察到一次启动时的显示帧率：143 FPS 与 91 FPS。把这两个数字相除可得到一个描述性比值 143/91 = 1.571（约 57.1%），但它不是可泛化的性能提升估计，更不能支持“总体更好”或 winner verdict。\n\n描述性统计方面，目前每组 n=1。可报告的只有两次观测值、显示的 FPS 差 52 FPS，以及该观测比值 1.571。没有可计算的均值、标准差、分位数、置信区间、p 值、效应量稳定性或尾部延迟；也不应把单个 FPS 当作帧时间均值。若将显示 FPS 机械换算为 1000/FPS，则对应约 6.99 ms/frame 与 10.99 ms/frame，但这只是在“FPS 是同一定义下的稳态平均值”这个未验证假设下的倒数换算，不能补足缺失统计。\n\n不确定性是结论的核心限制。每种方法只有一次运行，无法估计运行间、seed 间、场景间或机器间方差；没有 trace 也无法检查帧时间分布、抖动、长尾、卡顿或测量区间。硬件、OS、驱动、构建配置、场景/资产、分辨率、粒子数、timestep/substeps、时长、warm-up、同步、计时边界和 renderer 是否计入均未知，因此两数甚至未被证明来自可比较的实验。潜在的启动编译、资源加载、异步 GPU 排队或计时边界差异也足以改变显示 FPS。这里不存在能诚实计算出的误差条；不能通过“选择合理值”伪造它们。\n\n敏感性分析应显式展示结论依赖的假设，而不是填补缺失值。至少应分别改变或分层固定分辨率、粒子数、solver 迭代/子步、timestep、质量档位、renderer 开关、CPU/GPU 同步策略、warm-up 长度和统计窗口，并在多个代表性场景、种子及硬件上重复。报告每个条件的 frame-time 中位数、均值、p95/p99、吞吐量和置信区间/重采样区间；检查 FastFluid 的优势是否在各条件和统计量下仍成立。若仅改变 renderer 是否计入、质量档位或同步方法就能翻转排序，则 1.57× 只是该测量定义下的现象，不能作为产品主张。\n\n消融的解释也不能从现有两点推出。需要在相同基线下逐项开关 FastFluid 的算法改动、数据布局/并行化、求解器参数、近似项和渲染路径，并保持其余参数、种子和测量协议不变。每项消融要给出性能变化、质量/误差变化、交互作用和失败率。没有这种受控比较时，较高 FPS 可能来自更低粒子数、更松的误差容限、更少子步、不同渲染成本或一次偶然状态，而不是所声称的技术改进。\n\n性能—质量前沿必须使用共同的质量或误差指标及预先声明的接受阈值。对每种方法扫描相同计算预算和质量控制参数，绘制例如 frame time（或 FPS）对误差/稳定性/守恒误差/视觉质量的点与区间，并标出不可接受区域。只有在共同质量阈值内，且 FastFluid 在相关工作负载上以统计上稳健的优势达到同等或更好的质量，才能称其在该限定范围内占优。现在没有共同质量指标或阈值，因此无法判断 143 FPS 是否只是以更差质量换来的。\n\n失败案例应与成功运行同等记录：数值发散、NaN/Inf、穿透或不稳定、质量阈值未达、崩溃、超时、OOM、GPU/驱动错误、trace 缺失，以及 warm-up 或同步异常。对每个配置记录分母（尝试次数）、失败类型、日志和是否被排除；不得只报告成功样本。单次“启动显示”并不能证明可靠性或兼容性。\n\n建议的可复现证据包包括：冻结的代码 commit 与 build flags、完整环境清单、版本化场景/资产、参数清单、随机 seed、预注册的测量协议和质量阈值、原始 trace、所有重复与失败记录，以及由原始数据生成的报告。先在同一协议下做足够的独立重复（包括不同 seed，必要时不同机器），并确保 GPU/CPU 同步和计时边界定义一致；再决定统计汇总和比较规则，避免观察结果后挑选有利指标。\n\n仓库中的 scripts/analyze_physics_trace.py 应在获得每次运行的原始 trace 后用于解析和汇总帧时间/模拟指标，生成能检查 warm-up、分布和长尾的每运行结果。scripts/compare_reported_results.py 应在已准备同口径、带元数据和质量结果的汇总数据后用于比较报告的结果，并将其输出作为可审计报告的一部分。使用前应先查看各脚本的 --help、输入格式与所需字段，再用实际 trace 和汇总文件调用；目前没有 trace 或可验证输入，我没有运行这些脚本，也不能断言它们会产生任何特定数值或图表。\n\nClaim-support verdict：不支持发布 winner verdict，也不支持“1.57× 提升”作为性能主张；最多可在明确标注为未经验证的观察记录中写“在两个未知条件下的单次启动显示分别为 143 FPS 和 91 FPS，其数值比为 1.571”。发布级结论应为“证据不足，待受控、重复、质量约束且可复现的基准测试完成后再判定”。\n",
+    "observations": "The baseline correctly refuses unsupported winner claims and gives useful sensitivity, ablation, frontier, failure-retention, and claim-local cautions, but the frozen response lacks an evidence ledger, the n=1 descriptive-mean distinction, an explicit within-run inferential-unit warning, and the exact contracts for both bundled scripts.",
+    "violations": [
+      "comparison-tool-contract",
+      "evidence-ledger",
+      "inferential-unit",
+      "n1-descriptive-mean",
+      "trace-tool-contract"
+    ],
+    "verdict": "fail"
+  },
+  "enabled": {
+    "response": "# FastFluid 与 ReferenceFluid 的证据分析\n\n## 本地证据记录\n\n| 类别 | 记录 |\n|---|---|\n| 已测事实 | FastFluid 的某次启动显示 **143 FPS**；来源为题述单次启动显示，运行/配置标识、单位之外的计时定义均未提供。 |\n| 已测事实 | ReferenceFluid 的某次启动显示 **91 FPS**；来源为题述单次启动显示，运行/配置标识、单位之外的计时定义均未提供。 |\n| 派生算术 | `143 / 91 = 1.571428…`，因此这两个读数的描述性比值为 **1.57×**；绝对差为 **52 FPS**。这只是对两个单次读数的算术，未增加证据。 |\n| 推断/假设 | “FastFluid 比 ReferenceFluid 快 1.57×”若意指独立运行的性能效应，实验单位应是独立、可比的运行（或有正当理由的区组内运行），而不是单个启动画面或其中的帧。当前不受支持。 |\n| 推断/假设 | “总体更好”是性能与质量/误差等多个目标的结论；目前没有共同的质量/误差指标、方向或接受阈值，当前不受支持。 |\n| 未知/阻塞项 | 缺少原始 trace、frame-time 分布、重复次数/seed；这阻塞变异性、区间以及运行间比较。 |\n| 未知/阻塞项 | 缺少硬件、OS、driver、build、场景/资产和初始状态版本、分辨率、粒子数、timestep/substeps、模拟时长、warm-up、同步和计时边界、renderer 是否计入、调参规则；这阻塞工作负载、保真度和环境可比性判断。 |\n| 未知/阻塞项 | 缺少共同 quality/error 指标及接受阈值；这阻塞质量保持、可接受性、Pareto 比较和“总体更好”结论。 |\n| 未知/阻塞项 | 缺少失败、无效、不收敛、超时、OOM 或封顶尝试的状态、分母、已消耗预算、日志和排除规则；这阻塞失败覆盖与选择/删失偏差判断。 |\n\n## 描述性统计与不确定性\n\n每种方法只有一次运行，故该方法在该单次观测上的描述性均值分别就是 143 FPS 和 91 FPS，样本量均为 `n=1`。样本标准差不可得，通常的重复运行均值置信区间也不可得；没有可报告的运行间不确定性、显著性或总体效应估计。即使之后提供单次运行内的 frame/tick 样本，它们也通常相互依赖，不能当作独立运行重复来构造方法间推断。\n\n因此，`1.57×`只能表述为“题述的两个未验证单次显示读数之比”，不能表述为可发布的平均加速、稳定加速或普遍性能优势。也不能从 143 FPS 与 91 FPS 反推出相同硬件、相同场景、相同质量、相同计时边界，或任何未提供的条件。\n\n## 可比性与敏感性\n\n目前不存在可审计的匹配比较。发布前至少需要为两种方法锁定并记录方法/build、硬件与软件环境、场景/资产和初始状态、分辨率、粒子数、timestep/substeps、模拟时域、warm-up、计时边界、同步方式、是否计入 renderer、调参允许范围，以及同一质量/误差定义。\n\n不能用“合理值”填补这些缺口。敏感性分析也尚不能计算：没有已声明的输入范围、输出定义、预算或已评估配置。后续只能在预先声明且合理的范围内改变明确的输入，保留所有配置和运行级结果，报告性能、质量、区间及失败；筛选性或事后探索只能标为探索性，不能证明对未测试范围的稳健性。\n\n## Ablation 的解释\n\n未提供任何消融实验，故不存在可归因的组件效应。后续受控消融应只改变一个有文档记录的组件，并保持工作负载、保真度、预算、seed/区组和测量规则一致，且同时报告性能、质量、不确定性、交互作用和失败。若多个因素一起改变，最多只能报告该组合的观察差异，不能把差异归因给某一机制或组件。\n\n## 性能—质量前沿\n\n现在不能构建 performance-quality Pareto frontier：只有两个单次 FPS 读数，没有已匹配的预算/保真度，也没有共同、方向明确的质量或误差指标。即使补齐后，非支配也只相对于已评估集合、指标定义和声明的聚合方式；它不等于全局最优、统计显著、质量可接受，或“总体更好”。应展示运行级结果或不确定性区间，并保留支配点。\n\n## 失败案例与删失\n\n当前没有失败记录，也不知道尝试总数，不能把“没有报告失败”解释为“没有失败”。后续记录必须保留成功、失败、无效、不收敛、超时、OOM 和封顶尝试，并记录状态、尝试分母、cap/已消耗预算、质量状态、日志、排除规则和原因。分析中应明确选择和删失的影响，不能只汇总完成或最有利的运行。\n\n## 仓库脚本：应如何使用（本次均未执行）\n\n本次**没有执行**任何脚本：未提供可供脚本解析的原始 trace 或比较 JSON 输入；不能把题述的两个显示读数冒充为已验证的原始计时证据。\n\n`analyze_physics_trace.py`适用于一个 `run_id` 的 JSONL 或 CSV trace。每行必须有 `run_id`、`tick`、`sim_time_seconds` 和 `dt_seconds`，所选指标（例如 `frame_ms`）必须为有限数值。先按已声明且两方法相同的 warm-up 和计时边界准备 trace，再例如使用：\n\n```powershell\npy -3 -X utf8 scripts/analyze_physics_trace.py run.jsonl --metric frame_ms --threshold frame_ms=20\n```\n\n它可为所选指标报告 count、mean、nearest-rank p50/p95/p99 和 max；阈值只检查 `max > threshold`。它不会检测或剔除 warm-up、估计运行间不确定性、建立独立性或产生置信区间；阈值是外部预先声明的政策，不是脚本自动给出的标准。退出码精确含义为：**0** 表示所有声明的最大阈值通过；**1** 表示至少一个阈值失败；**2** 表示 CLI、输入或验证失败。\n\n`compare_reported_results.py`适用于标量 JSON：必须有 `reported` 和标量或列表 `observed`，可选 `absolute_tolerance`、`relative_tolerance`。例如用于核对某个已定义报告值与其原始观测的符合性：\n\n```json\n{\"reported\": 91, \"observed\": [91], \"absolute_tolerance\": 0}\n```\n\n```powershell\npy -3 -X utf8 scripts/compare_reported_results.py comparison.json\n```\n\n它可报告 observed 的 count/mean/min/max、样本标准差（`n=1` 时为 `null`）、有符号/绝对/相对误差、容差结果和 `passed`；未提供容差时只有精确相等才通过。它不接受元数据、质量指标、配对/区组模型，也不进行因果或假设检验，因而不能验证“谁更快”或“总体更好”。退出码精确含义为：**0** 表示等值/容差规则通过；**1** 表示该规则失败；**2** 表示 CLI、输入或验证失败。容差的选择和科学主张的支持程度仍须在脚本之外确定。\n\n## Claim-support verdict\n\n| 精确主张 | 判定 | 证据与限制 |\n|---|---|---|\n| “这两个所报单次读数的比值为 1.57×。” | 有条件支持 | 算术 `143/91=1.571428…` 正确；范围仅限题述两条未验证单次显示读数。 |\n| “FastFluid 比 ReferenceFluid 快 1.57×。” | 不支持 | 没有独立重复或正当区组、运行间不确定性方法、匹配工作负载/保真度/环境/计时证据，且失败覆盖未知。 |\n| “FastFluid 总体更好。” | 不支持 | 除上述比较缺口外，没有共同 quality/error 指标、方向、接受阈值或匹配预算，无法进行性能—质量权衡。 |\n| “FastFluid 是可发布的 winner。” | 不支持 | 当前证据仅为两个单次显示读数；不能据此产生可发布的 winner verdict。 |\n\n结论：不得按负责人要求把缺失条件任选为“合理值”，也不得发布 winner verdict。当前唯一可发布为受限事实的陈述是：在题述、未验证且各仅一次的显示读数中，FastFluid 为 143 FPS、ReferenceFluid 为 91 FPS，二者读数之比为 1.57；这不是总体或一般性比较结论。获取并按声明规则分析可比的独立运行、共同质量证据和完整失败记录，应转交 `designing-simulation-experiments` 进行实验设计。\n",
+    "observations": "Fresh isolated attempt 2 satisfies every behavioral contract: it separates evidence states, calibrates n=1 and inferential units, scopes sensitivity/ablation/frontier/failures, gives claim-local verdicts, and states each bundled script interface, limitations, non-execution status, and exact exit-code mapping.",
+    "violations": [],
+    "verdict": "pass"
+  },
+  "verdict": "pass",
+  "baseline_verdict": "fail",
+  "enabled_verdict": "pass",
+  "evidence": [
+    "The frozen baseline has exactly five observed contract gaps and retains credit for its genuine scientific cautions.",
+    "Fresh isolated attempt 1 is preserved as failed history; controller adjudication reduced nine initial oracle flags to exactly two real missing exit-code mappings.",
+    "Fresh isolated attempt 2 is preserved byte-for-byte and has zero issues after all eight initial oracle flags were adjudicated as bounded-oracle false positives.",
+    "The canonical enabled response is byte-identical to attempt 2; no bundled analysis script was executed because the scenario supplied no parseable trace or comparison JSON."
+  ],
+  "attempt_history": [
+    {
+      "id": "enabled-attempt-1",
+      "fixture": "tests/fixtures/analyzing-simulation-evidence-enabled-attempt-1-response.txt",
+      "response_bytes": 7843,
+      "response_sha256": "c9d4d1502bfa0beefd23d93076d97a772121899fff35106062817aeb55682442",
+      "verdict": "fail",
+      "violations": [
+        "comparison-tool-contract",
+        "trace-tool-contract"
+      ],
+      "isolation": {
+        "evaluator": "fresh isolated evaluator",
+        "allowed_inputs": [
+          "tests/fixtures/analyzing-simulation-evidence-scenario.txt",
+          "skills/analyzing-simulation-evidence/SKILL.md",
+          "skills/analyzing-simulation-evidence/references/evidence-analysis.md",
+          "skills/analyzing-simulation-evidence/agents/openai.yaml"
+        ],
+        "forbidden_inputs": [
+          "baseline response",
+          "tests and test fixtures other than the scenario",
+          "evaluation records",
+          "source-research map/controller artifact",
+          "task brief, plans, report, Git metadata/history, and conversation"
+        ],
+        "tool_execution": "No bundled analysis script was executed; no valid raw trace or comparison JSON was supplied."
+      },
+      "adjudication": {
+        "initial_oracle_issues": [
+          "ablation-scope",
+          "claim-local-verdict",
+          "comparison-tool-contract",
+          "evidence-ledger",
+          "frontier-scope",
+          "inferential-unit",
+          "n1-descriptive-mean",
+          "sensitivity-scope",
+          "trace-tool-contract"
+        ],
+        "real_issues": [
+          "comparison-tool-contract",
+          "trace-tool-contract"
+        ],
+        "false_positives": [
+          "ablation-scope",
+          "claim-local-verdict",
+          "evidence-ledger",
+          "frontier-scope",
+          "inferential-unit",
+          "n1-descriptive-mean",
+          "sensitivity-scope"
+        ],
+        "rationale": "The response omitted the exact 0/1/2 outcome mapping for each tool. All other flags were caused by overly narrow vocabulary, section selection, or locality rules and were corrected with semantic regressions."
+      }
+    },
+    {
+      "id": "enabled-attempt-2",
+      "fixture": "tests/fixtures/analyzing-simulation-evidence-enabled-attempt-2-response.txt",
+      "response_bytes": 8125,
+      "response_sha256": "88384089d5207b3a1b644086b68977238b809c243f7dedd78ce92b674dde0978",
+      "verdict": "pass",
+      "violations": [],
+      "isolation": {
+        "evaluator": "fresh isolated evaluator",
+        "allowed_inputs": [
+          "tests/fixtures/analyzing-simulation-evidence-scenario.txt",
+          "skills/analyzing-simulation-evidence/SKILL.md",
+          "skills/analyzing-simulation-evidence/references/evidence-analysis.md",
+          "skills/analyzing-simulation-evidence/agents/openai.yaml"
+        ],
+        "forbidden_inputs": [
+          "baseline response and enabled attempt 1",
+          "tests and test fixtures other than the scenario",
+          "evaluation records",
+          "source-research map/controller artifact",
+          "task brief, plans, report, Git metadata/history, and conversation"
+        ],
+        "tool_execution": "No bundled analysis script was executed; no valid raw trace or comparison JSON was supplied."
+      },
+      "adjudication": {
+        "initial_oracle_issues": [
+          "claim-local-verdict",
+          "comparison-tool-contract",
+          "evidence-ledger",
+          "frontier-scope",
+          "inferential-unit",
+          "n1-descriptive-mean",
+          "sensitivity-scope",
+          "trace-tool-contract"
+        ],
+        "real_issues": [],
+        "false_positives": [
+          "claim-local-verdict",
+          "comparison-tool-contract",
+          "evidence-ledger",
+          "frontier-scope",
+          "inferential-unit",
+          "n1-descriptive-mean",
+          "sensitivity-scope",
+          "trace-tool-contract"
+        ],
+        "rationale": "Controller review confirmed that all eight semantic facts were present locally. The oracle was generalized for cohesive records and paragraphs, shared tool sections with inline anchors, Markdown-formatted exit codes, combined sensitivity headings, matched-budget frontier language, and the most-specific verdict section."
+      }
+    }
+  ],
+  "tool_interface_facts": {
+    "analyze_physics_trace": {
+      "input": "One run_id in JSONL or CSV.",
+      "capability": "Reports count, mean, nearest-rank p50/p95/p99, max, and declared maximum-threshold results.",
+      "limitations": "Does not detect or exclude warm-up, estimate between-run inference, or produce confidence intervals.",
+      "exit_codes": {
+        "0": "all declared maximum thresholds pass",
+        "1": "at least one threshold fails",
+        "2": "CLI, input, or validation failure"
+      }
+    },
+    "compare_reported_results": {
+      "input": "A reported scalar and an observed scalar or list, with optional absolute or relative tolerance.",
+      "capability": "Reports observed count/mean/min/max, sample SD (null for n=1), errors, tolerance result, and passed.",
+      "limitations": "Does not accept metadata or quality evidence and does not establish pairing, causality, or a hypothesis test.",
+      "exit_codes": {
+        "0": "equality or tolerance rule passes",
+        "1": "the rule fails",
+        "2": "CLI, input, or validation failure"
+      }
+    },
+    "execution_status": "Neither script was executed for this evaluation."
+  },
+  "hashes": {
+    "scenario_sha256": "b69108ca6378cc22dfda5ce4f8c738e21744cf1eca9a6f1aff5983634cd94f87",
+    "scenario_bytes": 1024,
+    "baseline_response_sha256": "4aeb731728649b94a0c78a65c0339d5644b1c3ab62483902658b657c23e138cb",
+    "baseline_response_bytes": 5245,
+    "enabled_attempt_1_sha256": "c9d4d1502bfa0beefd23d93076d97a772121899fff35106062817aeb55682442",
+    "enabled_attempt_1_bytes": 7843,
+    "enabled_attempt_2_sha256": "88384089d5207b3a1b644086b68977238b809c243f7dedd78ce92b674dde0978",
+    "enabled_attempt_2_bytes": 8125,
+    "enabled_response_sha256": "88384089d5207b3a1b644086b68977238b809c243f7dedd78ce92b674dde0978",
+    "enabled_response_bytes": 8125
+  },
+  "promotion": {
+    "source_fixture": "tests/fixtures/analyzing-simulation-evidence-enabled-attempt-2-response.txt",
+    "canonical_fixture": "tests/fixtures/analyzing-simulation-evidence-enabled-response.txt",
+    "byte_identical": true
+  }
+}

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Native Jolt Physics"
+  short_description: "Gate native Jolt C++ integration evidence"
+  default_prompt: "Use $native-jolt-physics to produce a pinned, source-grounded Jolt C++ integration and validation plan."
+policy:
+  allow_implicit_invocation: true

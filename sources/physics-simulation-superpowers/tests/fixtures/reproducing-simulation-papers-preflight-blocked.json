@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "evidence_type": "preflight-blocker",
+  "target_claim_id": "table-3-cityflood-speedup",
+  "artifact_acquired": false,
+  "artifact_executed": false,
+  "target_evaluated": false,
+  "observed_value": null,
+  "reason_codes": [
+    "artifact-unavailable",
+    "provenance-unverified",
+    "license-unverified",
+    "safe-isolation-unavailable",
+    "inputs-and-tolerances-unavailable"
+  ],
+  "safety_decision": "Do not expose host credentials, SSH material, home directories, the Docker socket, privileged mode, or host networking to untrusted author code.",
+  "statement": "The artifact-rerun stopped before acquisition or execution. No performance or quality result was measured."
+}

@@ -1,0 +1,68 @@
+“当前 Godot 4”不能作为可复现版本号。先冻结证据，再迁移；在此之前不要安装旧 Godot Jolt extension，也不要照抄任何设置路径或默认值。
+
+### 1. 建立可复现基线
+
+记录并纳入构建清单：
+
+- 编辑器与导出模板的完整版本、commit/构建标识及文件校验值。
+- 客户端、专服的目标 OS、架构、构建模式。
+- `project.godot`、addons、`.gdextension` 及实际加载日志。
+- 运行时实际使用的 3D backend，而不是仅看编辑器下拉框。
+- 与该精确版本 tag 对应的官方类参考、项目设置文档和 Godot 源码。
+
+设置名、路径、默认值以及“Jolt 是否默认”都以这份固定版本的文档、设置导出和启动日志为准。
+
+### 2. 正确划分物理系统
+
+- 2D 使用 `PhysicsServer2D`、`CharacterBody2D`、`RigidBody2D` 等；Godot 的 Jolt backend只涉及 3D，不会迁移或替换 2D 物理。
+- 3D 场景层 API 由 `CharacterBody3D`、`RigidBody3D`、`PhysicsServer3D` 等提供，底层才可能是 Godot Physics 3D、内置 Jolt，或历史 extension。
+- 切换 backend 不等于自动迁移。碰撞形状、关节、休眠、CCD、接触和边缘案例必须做 A/B 回归。
+- 旧 extension 与内置 Jolt 不能凭经验混装。先确认目标构建是否需要它，以及它与该 Godot ABI、导出模板是否兼容；旧 `physics/jolt_3d` 配置也不能假定仍有效。
+
+### 3. 修正节点和运动代码
+
+Godot 4 应将旧 `KinematicBody` 迁移为 `CharacterBody3D`：
+
+```gdscript
+func _physics_process(delta):
+    velocity.y += gravity * delta
+    # velocity 是每秒速度
+    move_and_slide()
+```
+
+- `move_and_slide()` 使用节点的 `velocity`，并由物理帧处理时间推进；不要传入 `velocity * delta`。
+- `up_direction`、运动模式、地面角度等通过节点属性配置。
+- `move_and_collide(motion)` 接收的是本次位移，因此常见调用才是 `velocity * delta`。
+- 输入可在输入回调中采样，但状态改变和碰撞运动应在 `_physics_process()` 中执行，不能放在 `_process()`。
+
+`RigidBody3D` 不应每帧写 `global_transform`。动态刚体应通过力、冲量、速度或 `_integrate_forces(state)` 控制；完全脚本驱动的平台通常更适合 `AnimatableBody3D`。传送是离散事件，应使用目标版本支持的物理状态更新方式，同时处理速度、休眠和插值历史，而不是持续与求解器争夺 transform。
+
+### 4. 固定 tick、PhysicsServer 与插值
+
+- SceneTree 已按项目的固定物理 tick 驱动物理世界。通过目标版本公开的项目设置调整 tick rate，不要手动调用 `PhysicsServer3D` step。
+- `PhysicsServer3D` 是 RID 和底层物理对象接口，不是给活动 SceneTree 再推进一次世界的旁路；重复或无序 stepping 会破坏节点同步、回调顺序和插值。
+- 固定 tick 决定模拟采样频率；渲染 interpolation 只平滑两个已完成物理状态之间的显示，不增加求解精度，也不保证网络确定性。
+- 先把所有物理写操作移到物理帧，再按对象验证 interpolation。传送、重生、世界原点变化等必须重置插值历史。
+- 提高 solver iteration/substep 可能改善特定关节或穿透稳定性，但会增加 CPU；它不是通用“去抖”开关。
+
+### 5. 以 2 ms p95 为门槛验证
+
+先明确预算是物理帧墙钟时间、主线程时间，还是包含 Jolt worker 的总 CPU。使用发行/专服构建和真实硬件测量：
+
+- Godot Profiler 的物理耗时及帧时间；
+- `Performance` 中目标版本实际提供的活动对象、碰撞对、岛等监视项；
+- 自定义 tick 采样直方图，报告预热后的 p50/p95/p99；
+- 必要时结合平台 CPU profiler，区分主线程等待与 worker 总成本。
+
+测试矩阵至少覆盖斜坡、台阶、移动平台、堆叠、关节、CCD、高速碰撞、休眠/唤醒和高并发角色。分别比较 Godot Physics 3D 与内置 Jolt；每次只改一个参数。若 p95 超过 2 ms，优先减少动态体/接触数、复杂碰撞形状、CCD 和约束成本，再评估 solver 参数。
+
+### 6. 服务器权威与回放边界
+
+不要假设 Jolt 能让 Windows、Linux、客户端和服务器逐位确定。浮点、SIMD、线程调度、编译器以及 backend 版本都会造成分歧。
+
+- 服务器按编号固定 tick 进行权威模拟。
+- 客户端缓冲带 tick 的服务器快照并插值；本地角色可预测，但必须接受服务器校正。
+- 仅复制 transform 只能做非交互“幽灵播放”，不能恢复碰撞、速度、休眠、关节或游戏事件。
+- 可审计回放至少记录 tick、权威 transform、线/角速度、离散事件和关键游戏状态；输入回放还应有周期性完整快照及状态 hash。只有在同一固定构建和经过验证的执行环境内，才可把重新模拟当优化，不能把它当跨平台保证。
+
+通用物理工作流负责单位/尺度、碰撞形状、质量惯量、材质、层过滤、CCD、关节稳定性、测试场景和性能实验。`native-jolt-physics` 应处理 Jolt 原生 stepping、JobSystem、BodyInterface、对象/宽相层、状态序列化以及确定性边界等上游问题；但最终可用性和设置映射仍须回到固定版本的 Godot wrapper、源码与导出构建验证。

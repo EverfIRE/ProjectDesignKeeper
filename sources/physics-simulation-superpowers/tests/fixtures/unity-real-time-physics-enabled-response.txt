@@ -1,0 +1,91 @@
+这份“快速修复”不能直接实施：它混合了三个彼此独立的物理世界，并同时引入多写入者、错误时序和未经验证的性能调整。
+
+截至 **2026-08-28**，Unity 6.3 LTS（6000.3）文档快照显示部分新 API，但它不能证明当前项目实际可用。第一步必须冻结并记录：
+
+- `Application.unityVersion`
+- `ProjectSettings/ProjectVersion.txt`
+- `Packages/manifest.json`
+- `Packages/packages-lock.json`
+- 目标平台、客户端/服务器角色和构建配置
+- Physics、Time 设置
+- 场景、资产、输入、随机种子及采集来源
+
+随后在该冻结工程中检查或编译所有符号、设置路径和默认值；不得根据“Unity 6”猜测。
+
+### 1. 先选定唯一后端
+
+- Built-in 3D：`Rigidbody`、`Collider`、`Joint`、`PhysicsScene`，底层为 Nvidia PhysX。
+- Built-in 2D：`Rigidbody2D`、`Collider2D`、`Joint2D`、`PhysicsScene2D`，底层为 Box2D。
+- DOTS Unity Physics：`com.unity.physics`。所有组件、系统和查询名称必须按锁定的 Unity Physics 与 Entities 包版本确认。
+
+三者的世界、类型、接触、约束和查询互不替代。不得把 MonoBehaviour/`Rigidbody` 代码机械改名后用于 2D 或 DOTS；应分别建立适配层和测试场景。
+
+### 2. 修正运动所有权和固定步
+
+每个物体只能有一个运动状态写入者：
+
+1. `Update()` 只采样并缓存输入。
+2. 在选定的固定模拟边界应用输入。
+3. 动态刚体使用力、冲量，或由单一系统明确拥有的速度控制。
+4. `MovePosition`/`MoveRotation` 仅作为运动学运动接口。
+5. 传送和复位走独立路径，并清理或重建相关历史状态。
+
+立即删除动态刚体在 `Update()` 中的 `transform.Translate`、`transform.position` 写入以及与刚体速度写入并存的逻辑。
+
+`FixedUpdate()` 不是墙钟意义上的严格 60 Hz；一帧可能运行零次或多次固定步。若项目目标是 60 Hz，只能在冻结配置后验证相应固定时间设置，并记录 accumulator、每帧 catch-up 次数、封顶或丢失的模拟时间。手动 stepping 必须有唯一所有者和明确调用顺序，不能作为默认补丁。
+
+Unity 6.3 快照暴露了：
+
+- `Rigidbody.linearVelocity`
+- `Rigidbody.linearDamping`
+- `Rigidbody.angularDamping`
+- `Physics.simulationMode`
+
+`Rigidbody.velocity`、`drag`、`angularDrag`、`Physics.autoSimulation` 应作为旧工程迁移输入，而不是直接全局搜索替换；必须先在目标工程中编译并确认行为。
+
+### 3. 抖动、穿墙、约束与查询
+
+- Interpolation 只用于表现平滑，会引入表现延迟；它不修复碰撞、服务器同步或回放正确性。
+- CCD 必须依据“单步相对位移、碰撞体尺度、实际漏碰事件”选择性启用。禁止所有物体统一开启 Continuous Dynamic。
+- Solver iterations 只能在约束误差、堆叠或 joint 稳定性证据支持下做单变量 A/B 调整，不能先提高再观察。
+- Joint 必须属于同一后端和物理世界；分别验证断裂、极限、驱动、质量比及固定步下的稳定性。
+- 3D 查询绑定正确的 `PhysicsScene`；2D 查询绑定 `PhysicsScene2D`。
+- DOTS 查询必须按锁定包版本确认；`CollisionWorld` 看到的是某个确定 tick/state 构建出的 broadphase，不能假设它反映刚写入的任意状态。
+
+### 4. 服务器权威与回放
+
+明确服务器权威，并为实体标注 predicted、interpolated、cosmetic 角色。保存：
+
+- 带 tick 的输入历史
+- 回放所需物理状态
+- 修正点及 rewind/replay 规则
+- 状态或规范化状态 hash
+- 后端、版本、平台、配置、场景和随机种子
+
+仅复制 transform 只能提供视觉状态，不能证明物理一致或可回放。PhysX、Box2D、Unity Physics 之间，以及不同版本和平台之间，不得假设逐位确定性。需要确定性时，应在受支持的同一后端、版本和平台矩阵内以状态/hash 对比验证，并为偏差定义容限和修正策略。
+
+### 5. Profiler 与验收门槛
+
+在目标 Player/服务器构建上采集，不以 Editor FPS 作为结论。建立同场景、同输入、同种子、一次只改一个变量的 baseline/A-B：
+
+- physics simulation、脚本、query、同步成本
+- active bodies、contacts、constraints、query 数量
+- 每帧 fixed-step 与 catch-up 次数
+- CPU p50、p95、p99
+- 抖动、漏碰、joint 误差
+- 服务器/回放状态 hash 与首次分歧 tick
+
+验收要求 physics CPU p95 `<= 2 ms`，且不得通过丢失模拟时间或破坏正确性达成。遇到非有限状态、未知或不支持的 API、权威/历史损坏、缺少采集来源，或安全/性能预算未满足时停止发布。
+
+工作流路由如下：
+
+- 时序、所有权、手动 stepping：`architecting-real-time-physics`
+- 碰撞、查询、接触、CCD：`rigid-body-collision-contact`
+- joints、约束、ragdolls：`constraints-ragdolls-active-physics`
+- 角色控制器：`character-controller-movement`
+- 权威、预测、回放、确定性：`networked-deterministic-physics`
+- 证据与回归测试：`debugging-testing-physics`
+- 性能和预算：`profiling-scaling-physics`
+- 仅经确认属于 Built-in 3D 原生 PhysX 内部的问题：`nvidia-physx-sdk`
+
+进入 `nvidia-physx-sdk` 时仍须保留 Unity wrapper 和版本边界；2D/DOTS 问题不能转交给 PhysX 专项。

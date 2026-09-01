@@ -1,0 +1,190 @@
+# Verdict
+
+[INFERENCE:I001 from=F001,F002] 对“UE5 多人 authoritative gameplay soft-body、120 Hz production workload”作出 **no-go / insufficient-evidence**：论文支持作者在指定 GTX 1080 Ti、简单 falling-cube、单独 CUDA 路径上报告的 MLS-MPM 前向/反向每帧时间；它不支持该端到端游戏 workload 的实时性。科学主张为 mixed，artifact 证据为 insufficient-evidence，产品迁移准备度为 insufficient-evidence；决定性的限制是没有目标 workload 的 real-time tuple、没有已钉住的 publication artifact revision，且许可未确认。
+
+# Core idea
+
+[FACT:F001] 作者将连续体动量与质量守恒以 MLS-MPM 离散，在 particle 与 grid node 间做 P2G、grid operation、G2P；前向状态含 $x_p,v_p,C_p,F_p$，并把 controller 置于 P2G，后向按链式法则跨保存的各步状态传播。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;eq=1-6] [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=III;eq=7-10]
+
+[FACT:F002] 作者实现解析推导的 MLS-MPM gradients，并报告 CUDA 实现与 TensorFlow reference；论文所报告的 performance 表是 CUDA/C++ interface（避免 TensorFlow runtime overhead），不是 UE5、networking 或 full game frame。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=III;table=II]
+
+[INFERENCE:I002 from=F001,F002] 因此“可微”在已读材料中是该离散/边界处理路径的解析反传能力，而不是对任意接触事件、游戏同步、权威网络回滚或现实软体的全域光滑/精确保证。
+
+# Source manifest
+
+| source ID | role | stable URL | revision / access | access date | inspection depth | license / rights | support boundary | locator |
+|---|---|---|---|---|---|---|---|---|
+| chainqueen-icra | ICRA 论文 PDF | https://jiajunwu.com/papers/chainqueen_icra.pdf | DOI 10.1109/ICRA.2019.8794333 | 2026-08-30 | 已读全文（7 PDF 页） | PDF 未在本审阅中确认再利用许可 | 论文中的方法、作者报告的 benchmark/accuracy；非独立复现 | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=1;sec=Abstract] |
+| chainqueen-derivation | 作者梯度推导 PDF | https://cdfg.mit.edu/assets/files/chain_queen_0.pdf | sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d | 2026-08-30 | 已读 friction-projection 推导及可见全文结构（13 PDF 页） | 未确认 | 分段投影及其反传公式；不是 publisher revision | [S:chainqueen-derivation@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=12;sec=XI;eq=102-116] |
+| chainqueen-project | 作者项目页 | https://www.andrewspielberg.com/chainqueen-a-real-time-differentiable-physical-simulator-for-soft-robotics | accessed:2026-08-30 | 2026-08-30 | 已读页面 | 页面未给出集成许可 | 作者/会议/链接关联；非性能或复现验证 | [S:chainqueen-project@accessed:2026-08-30#fragment=main;para=ICRA%202019] |
+| chainqueen-repo | 作者 GitHub 仓库页面 | https://github.com/yuanming-hu/ChainQueen | accessed:2026-08-30 | 2026-08-30 | 已静态读取仓库页与 README 摘要；未执行/未克隆 | 仅观察到 Public；未确认 LICENSE | 公开和作者 README 对 legacy v1 的说明；无 full commit SHA，不能作行级实现或可复现事实 | [S:chainqueen-repo@accessed:2026-08-30#fragment=readme;para=legacy%20ChainQueen%20v1] |
+
+Epistemic mapping: AUTHOR_CLAIM maps to FACT about what authors report. DIRECT_OBSERVATION maps to FACT only for a source actually read, an artifact statically inspected, or code independently executed; it is not independent validation.
+
+# Claim–evidence matrix
+
+| normalized claim | source wording anchor | scope/qualifiers | evidence type | evidence anchors | relation | coverage | confidence | linked contradiction/unknown IDs |
+|---|---|---|---|---|---|---|---|---|
+| [FACT:F003] 作者报告 CUDA 前向/反向在 64,000 particles 分别为 1.594/1.774 ms per frame。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | NVIDIA GTX 1080 Ti、3D CUDA/C++，表中单项 time per frame | controlled quantitative experiment | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | supports | 作者报告的该配置，不含 UE5/网络/渲染 | high | U003, U004 |
+| [FACT:F004] 作者报告 512,000 particles 的 CUDA 前向/反向为 10.501/11.594 ms per frame。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | 同表的 3D CUDA/C++ 单项 benchmark | controlled quantitative experiment | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] | limits | 单独表项已大于 120 Hz 的 8.33 ms frame budget，且不是合并 F+B 或完整游戏管线 | high | U003, U004 |
+| [FACT:F005] 作者以 A1/A2 的 analytic ground truth、B/C 的 float64 finite difference，报告最高 1000 steps 的相对误差。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] | A1/A2/B/C 的指定维度、精度、场景和 step 数 | controlled quantitative experiment | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] | partially_supports | 支持这些测试的作者报告；不覆盖所有接触转变或 production control | medium | U005 |
+| [FACT:F006] 作者称 Flex 参数以视觉相似为准，Flex 使用 two steps per frame、four iterations per step，并明说 PBD 没有 Young’s modulus，不能精确设同参数。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] | falling-cube performance benchmark 中的 Flex 对比 | controlled quantitative experiment | [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] | limits | 是特定视觉匹配而非同一物理参数/完整 production-fairness 证明 | high | U006 |
+| [UNKNOWN:U003] 120 Hz authoritative UE5 workload 的 scene complexity、合并 F+B 调度、end-to-end frame time、hardware、precision 与 pipeline inclusions 均未由已读来源给出。 | UNKNOWN | 目标产品 scope | UNKNOWN | UNKNOWN | unverified | 无直接证据 | high | U003 |
+
+# Equations and assumptions
+
+| purpose | symbols/dimensions/units/domains | dependencies | status | derivation check | implementation mapping | numerical hazards | claim impact |
+|---|---|---|---|---|---|---|---|
+| exact mathematics — 连续体守恒与 MLS-MPM 状态 | $\rho,v,\sigma,g$；$x_p,v_p,C_p,F_p$；$\Delta t,\Delta x$，粒子/网格域 | 动量、质量守恒，粒子—网格 B-spline transfer | verified | [FACT:F007] 论文给出守恒式 (1–2) 与 P2G 质量/动量式 (3–6)。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;eq=1-6] | [UNKNOWN:U001] 无已建立的 full commit SHA，未能映射至固定实现 | 网格离散、kernel support、材料模型/边界省略会限制连续体解释 | 不构成 UE5 authoritative accuracy 保证 |
+| numerical approximation — G2P 与显式更新 | $v_p^{n+1},C_p^{n+1},F_p^{n+1},x_p^{n+1}$；$\Delta t$ | 先 grid velocity，再式 (7–10) | verified | [FACT:F008] 论文列出式 (7–10) 的 G2P、$F$ 与位置更新。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=III;eq=7-10] | [UNKNOWN:U001] 未固定源码版本 | 显式步进受 $\Delta t\le C\Delta x\sqrt{\rho/E}$ 限制，刚度增大使步长更严格。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=6;sec=VI;para=2] | 120 Hz 不能从 title 或单一 solver 表项推出 |
+| optional safeguard — friction projection 的 $\epsilon$ 正则 | $l_{it}=\sqrt{\sum_\alpha v_{it\alpha}^2+\epsilon}$、$l^*_{it}=\max\{\cdot,0\}$ | 边界法线 $n_i$、摩擦 $c_i$、min/max | plausible | [FACT:F009] 作者推导使用 $\epsilon$、min/max 与 Heaviside $H(x):=[x\ge0]$。 [S:chainqueen-derivation@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=12;sec=XI;eq=102-116] | [UNKNOWN:U001] 未在钉住实现中核对该 safeguard 的启用条件 | 分支阈值及 $H$ 在切换处不具经典光滑导数；$\epsilon$ 值/精度未在已读 performance 表中关联 | 不能把解析 backward 说成每个 contact transition 精确且平滑 |
+| heuristic — 任何未明示的 contact convention 或 game-facing stabilization | 接触阈值、warm start、rollback/同步参数 | [UNKNOWN:U005] 已读论文、推导和仓库页没有给出目标 UE5 网络场景的该类定义 | not_checked | [UNKNOWN:U005] 无可审计导出 | [UNKNOWN:U001] 未钉住源码，不能判定实现映射 | discontinuity、次序与浮点差异可能破坏跨机确定性 | authoritative gameplay 风险未消除 |
+| evaluated code path — CUDA/C++ timing 路径与 reverse pass | CUDA、GTX 1080 Ti、F/B、particles、ms/frame | benchmark 以 C++ 而非 Python interface 排除 TensorFlow runtime overhead | verified | [FACT:F010] Table II 明示 GPU、F/B、粒子数和时间，并说明 CUDA benchmark 用 C++ interface。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=III;table=II] | [UNKNOWN:U001] 作者仓库页未提供 publication-result 的 full commit SHA | 未报告 UE5 integration、networking、rendering 或 F+B 的同一帧预算 | 只能支持所列 microbenchmark |
+
+# Evaluation audit
+
+Review policy: required audit dimensions are target type, time step, substeps, iterations, collision cadence, line searches, work budget, pipeline inclusions, hardware/software/precision, baseline provenance, scene coverage, metrics, variability, ablations, and stress/failure cases.
+
+The real-time tuple is scene complexity, target Hz, end-to-end frame time, hardware, precision, and pipeline inclusions.
+
+| audit dimension | evidence-bounded audit |
+|---|---|
+| target type | [FACT:F011] 表 II 为 3D/2D forward 或 backward simulator 时间；非 UE5 multiplayer authoritative gameplay target。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] |
+| time step | [FACT:F012] 论文给出显式 integration 的 $\Delta t$ stability restriction，但已读 Table II 未给该 benchmark 的数值 $\Delta t$。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=6;sec=VI;para=2] |
+| substeps | [FACT:F013] Flex 使用 two steps per frame；ChainQueen table benchmark 的 substeps 未在该表中报告。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] |
+| iterations | [FACT:F014] Flex 使用 four iterations per step；ChainQueen 的对等 iterations 未在已读效率表披露。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] |
+| collision cadence | [UNKNOWN:U007] 已读效率段和 Table II 未报告 timing 场景的 collision cadence。 |
+| line searches | [UNKNOWN:U008] 已读材料未给出 solver line searches 的适用性或设置。 |
+| work budget | [FACT:F015] 512k F/B 单项为 10.501/11.594 ms；这不是同一 frame 的 F+B budget。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] |
+| pipeline inclusions | [UNKNOWN:U004] 已读 benchmark 说明排除了 TensorFlow runtime overhead，未枚举 collision/transfer synchronization、UE5、rendering、I/O 或 networking。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=III;table=II] |
+| hardware/software/precision | [FACT:F016] 性能表为 NVIDIA GTX 1080 Ti；accuracy cases 包含 3D float32 和 2D float64。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] |
+| baseline provenance | [FACT:F017] baseline 是 NVIDIA Flex；作者以视觉相似设参并承认不能同设 Young’s modulus。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] |
+| scene coverage | [FACT:F018] performance 用 simple falling cube；accuracy 为 A1/A2/B/C 和 pneumatic actuator cases。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.A;para=1] [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] |
+| metrics | [FACT:F019] Table II 为 time per frame/FPS，Table III 为 forward/gradient relative error。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II] [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III] |
+| variability | [UNKNOWN:U009] 已读表未报告 repetitions、方差、分位数或持续时长。 |
+| ablations | [UNKNOWN:U010] 已读范围没有 isolating CUDA optimization、contact treatment 或 gradient components 的 ablation。 |
+| stress/failure cases | [FACT:F020] 作者明确说高刚度需要更严格 $\Delta t$，近刚体宜与 rigid-body simulator 耦合。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=6;sec=VI;para=2] |
+
+[INFERENCE:I003 from=F003,F004,F015,F016] 对 64k 作者报告的单独 F/B，数值各低于 8.33 ms；但对 512k 各高于 8.33 ms，且没有 end-to-end 同帧 F+B 或产品 tuple，故“120 Hz production workload”不成立为已支持结论。
+
+# Artifact status
+
+| field | status | evidence / next action |
+|---|---|---|
+| artifact_presence | [FACT:F021] present | 仓库页为 Public，且列出 source、demos 与 tests 文件名。 [S:chainqueen-repo@accessed:2026-08-30#fragment=repository;para=folders%20and%20files] |
+| author_authenticity | [FACT:F022] author-linked | 项目页将 conference paper 与作者署名关联，仓库 README 的 BibTeX 指向 ICRA 2019。 [S:chainqueen-project@accessed:2026-08-30#fragment=main;para=ICRA%202019] [S:chainqueen-repo@accessed:2026-08-30#fragment=readme;para=BibTex] |
+| paper_revision_identified | [UNKNOWN:U001] | 取得 full commit SHA，并将其与产出 Table II/III 的 revision 对应；当前仅见 mutable master。 |
+| immutable_archive | [UNKNOWN:U011] | 要求 DOI/SWHID/release archive 与 checksum。 |
+| license_clarity | [UNKNOWN:U002] | 要求仓库 LICENSE 或权利人书面集成许可；Public 不是许可。 |
+| pinned_dependencies | [FACT:F023] incomplete | README 只列 legacy taichi、CUDA 8.0+、tensorflow-gpu、gcc-6，未给完整锁定版本。 [S:chainqueen-repo@accessed:2026-08-30#fragment=readme;para=Installation] |
+| build_instructions | [FACT:F024] partial | README 给 Linux tested platforms、放入 taichi/projects/ 与 `ti build`，但本审阅未执行。 [S:chainqueen-repo@accessed:2026-08-30#fragment=readme;para=Installation] |
+| smoke_test_status | [UNKNOWN:U012] | 在钉住 revision/依赖环境运行一个 demo 并保存日志；不得视为复现。 |
+| complete_paper_inputs | [UNKNOWN:U013] | 要求 paper scenes、参数、随机种子和初始条件清单。 |
+| complete_baselines | [UNKNOWN:U014] | 要求 Flex 版本、参数、场景与运行脚本。 |
+| raw_outputs | [UNKNOWN:U015] | 要求 Table II/III 原始 timing/error 输出及环境元数据。 |
+| figure/table_scripts | [UNKNOWN:U016] | 要求生成 Table II/III 与 figures 的脚本。 |
+| independent_reproduction | [UNKNOWN:U017] | 在固定 revision 上重跑目标并保留 hashes/logs；build/smoke 不足。 |
+| official_badges | [UNKNOWN:U018] | 查询正式 artifact/badge registry 并记录结果；仓库存在不能推断 badge。 |
+
+# Limits and contradictions
+
+[FACT:F025] 作者披露显式时间积分对刚性材料有严格的 $\Delta t$ 上限，并建议近刚体使用 rigid-body simulator 耦合；这是与 120 Hz、任意刚度/场景外推相冲突的限制，而不是论文结果被推翻。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=6;sec=VI;para=2]
+
+[FACT:F026] 作者的 friction projection 以 min/max 与 Heaviside gate 定义；因此它在阈值处是分段约定，不能作为“contact gradients 精确、平滑”的全域证据。 [S:chainqueen-derivation@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=12;sec=XI;eq=102-116]
+
+[INFERENCE:I004 from=F006,F017] Flex 比较有明确参数不可同设和视觉匹配限定，故它不足以证明跨算法物理公平性或到当前硬件的外推；这不否定作者所报告的特定 benchmark。
+
+[INFERENCE:I005 from=F021,F023,F024] 仓库 README 将其称为 old Oct 2018 legacy v1、未含 unpublished results，并建议等待 v2；在无固定 revision/许可/完整结果资产时，不能把公开 repo 当作可直接集成或完整复现。 [S:chainqueen-repo@accessed:2026-08-30#fragment=readme;para=legacy%20ChainQueen%20v1]
+
+本文没有同一 scope 的互斥来源主张，故无 CONTRADICTION 记录。
+
+# Confidence
+
+[INFERENCE:I006 from=F003,F005,F006,F020] 对 no-go 的置信度为 **0.91（high）**：它是“现有证据不支持现在上线”的有界决策，依据为已读效率/梯度表的明确 scope、Flex 限定和刚度限制；对 ChainQueen 在新硬件或目标 workload 的实际表现不作负面断言。对任何 go 仅 low，因为 U001–U018 中的决定性 artifact、许可、end-to-end、变异性与 workload 证据尚未消除。
+
+# Minimal reproduction target
+
+- `figure/table/scene/metric:` [FACT:F027] Table II 的 3D CUDA 64,000-particle forward time per frame = 1.594 ms（并单独记录 backward = 1.774 ms）；不把它合并为 UE5 120 Hz 结论。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II]
+- `publication revision:` DOI 10.1109/ICRA.2019.8794333。
+- `artifact revision:` [UNKNOWN:U001] publication-result 的 full commit SHA 尚未建立；这是执行前 blocker。
+- `configuration:` [UNKNOWN:U013] 需作者提供 Table II 64k 的 scene、材料、$\Delta t$、substeps、precision、compiler/CUDA flags、GPU clocks 和种子。
+- `measurement:` [UNKNOWN:U015] 需采集 F 与 B 各自 per-frame timing、完整环境清单与原始样本；不得把编译或 demo 启动当作测量。
+- `pass/fail criterion:` [FACT:F028] 仅核对是否复得作者报告的 1.594 ms forward 与 1.774 ms backward 这两个表值；可接受偏差、次数与统计规则未发表，须经用户/作者批准后才设定。 [S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II]
+- `expected resources/runtime:` [UNKNOWN:U019] 论文未给 Table II 完整运行时、warm-up、repetitions 或资源峰值；先取得配置再预算。
+- `deviations/non-claims:` [INFERENCE:I007 from=F027] 此 probe 不验证 UE5 integration、authoritative networking、determinism、rendering、current hardware、F+B same-frame budget、Flex fairness 或现实控制。
+- `logs and hashes:` [UNKNOWN:U020] 保存 full commit SHA、dependency/container hashes、GPU/driver、命令、原始 timing、脚本 hash 和输出 hash；路线为 `pending_route`，交给 reproducing-simulation-papers，前提是 U001/U013/U015 被解决。
+
+# Unknowns
+
+| unknown record | sources checked | verdict effect | resolving action |
+|---|---|---|---|
+| [UNKNOWN:U001] | 论文 PDF、作者 PDF、项目页、GitHub mutable master 页 | 无法把实现、结果与论文精确绑定；阻止复现/集成结论 | 获取完整 commit SHA、发布包 hash 及作者对 Table II/III revision 的声明 |
+| [UNKNOWN:U002] | GitHub 仓库页、README 摘要 | 阻止法律许可的 UE5 集成 | 获取 LICENSE 或权利人书面许可与依赖许可证清单 |
+| [UNKNOWN:U003] | 论文 Table II/III、项目页、仓库页 | 目标 120 Hz go 不可成立 | 指定目标 scene、Hz、F+B schedule、hardware、precision、端到端 pipeline 并测量 |
+| [UNKNOWN:U004] | 论文 Table II、仓库 README | solver microbenchmark 不能代替游戏帧 | 记录 collision、transfer/sync、UE5、rendering、I/O、networking 的分项与总帧时间 |
+| [UNKNOWN:U005] | 论文、作者推导 PDF、仓库页 | 接触 gradient 的全域精确/平滑不可声称 | 为接触切换、摩擦阈值、渗透和多接触设计 gradient-check/控制 stress suite |
+| [UNKNOWN:U006] | Flex 比较段、Table II | 不可声称跨算法/现代硬件公平性 | 固定 Flex 版本、共同场景/质量准则、参数映射与 current-hardware budgets |
+| [UNKNOWN:U007] | 效率段、Table II | collision cost/scope 未知 | 发布 benchmark collision cadence 与设置 |
+| [UNKNOWN:U008] | 论文、推导 PDF | solver safeguard/work budget 未完整审计 | 发布 line-search 是否适用及运行设置 |
+| [UNKNOWN:U009] | Table II、Table III | 无法估计 timing/error 稳定性 | 发布 repetitions、分布、warm-up 与持续时间 |
+| [UNKNOWN:U010] | 已读论文范围 | 无法归因性能/精度来源 | 增加 CUDA、contact、backward 与 precision ablations |
+| [UNKNOWN:U011] | GitHub repo 页 | 不可防止 mutable-history 漂移 | 发布 immutable archive DOI/SWHID 与 hash |
+| [UNKNOWN:U012] | README | 未执行状态，不能称 functional | 在固定环境作 smoke test 并保存 logs |
+| [UNKNOWN:U013] | 论文、README | 不能配置 paper target | 发布 inputs、参数、场景与 seeds |
+| [UNKNOWN:U014] | Flex 段、README | baseline 可复核性不足 | 发布 Flex version/configuration/scripts |
+| [UNKNOWN:U015] | Table II/III、README | 不能独立核验数值 | 发布 raw outputs 和 environment metadata |
+| [UNKNOWN:U016] | README、论文 | figures/tables 不可端到端再生 | 发布 figure/table scripts |
+| [UNKNOWN:U017] | 论文、repo 页 | 不能称已独立复现 | 固定 inputs/revision 后由独立人员重跑并保留证据 |
+| [UNKNOWN:U018] | repo 页 | 不能声称 official badge | 查验并链接正式 badge registry record |
+| [UNKNOWN:U019] | Table II、README | 不能承诺 reproduction 成本 | 获取 profile、repetition 和资源峰值 |
+| [UNKNOWN:U020] | 论文、repo 页 | 结果不可审计 | 定义并保存命令、logs、hashes 与环境 manifest |
+
+# JSON adapter
+
+```json
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "ChainQueen: A Real-Time Differentiable Physical Simulator for Soft Robotics",
+    "authors": ["Yuanming Hu", "Jiancheng Liu", "Andrew Spielberg", "Joshua B. Tenenbaum", "William T. Freeman", "Jiajun Wu", "Daniela Rus", "Wojciech Matusik"],
+    "year": 2019,
+    "doi": "10.1109/ICRA.2019.8794333",
+    "primary_link": "https://jiajunwu.com/papers/chainqueen_icra.pdf"
+  },
+  "contribution_type": "MLS-MPM soft-robotics simulator with analytical backward gradients",
+  "claims": [
+    {
+      "claim": "Authors report 64k-particle CUDA forward/backward timings of 1.594/1.774 ms per frame on GTX 1080 Ti.",
+      "evidence_anchors": ["[S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.A;table=II]"]
+    },
+    {
+      "claim": "Authors report specified gradient-check errors for A1/A2/B/C, not universal contact-gradient smoothness.",
+      "evidence_anchors": ["[S:chainqueen-icra@doi:10.1109/ICRA.2019.8794333#page=4;sec=IV.B;table=III]", "[S:chainqueen-derivation@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=12;sec=XI;eq=102-116]"]
+    }
+  ],
+  "methods_assumptions": [
+    "MLS-MPM particle-grid transfers and explicit updates use equations 1-10.",
+    "Friction projection uses epsilon, min/max, and Heaviside-gated branches.",
+    "Explicit integration has a stiffness-dependent time-step restriction."
+  ],
+  "experimental_conditions": [
+    "Performance Table II uses NVIDIA GTX 1080 Ti and reports CUDA/C++ forward or backward time per frame.",
+    "Flex comparison uses visual material matching, two steps per frame, and four iterations per step for Flex.",
+    "Accuracy cases include 3D float32 analytic tests and 2D float64 finite-difference tests."
+  ],
+  "artifacts": {
+    "repository_public": true,
+    "publication_commit_sha": "unknown",
+    "license": "unknown",
+    "independent_reproduction": "not performed"
+  },
+  "limitations": [
+    "No target UE5 authoritative multiplayer end-to-end real-time tuple was measured.",
+    "The repository is described by its README as legacy v1 and lacks an established immutable publication-result revision.",
+    "Contact projection has thresholded min/max and Heaviside branches."
+  ],
+  "real_time_applicability": "Insufficient evidence for 120 Hz UE5 authoritative gameplay; Table II is a bounded solver benchmark, not a complete game frame.",
+  "verdict": "insufficient-evidence",
+  "confidence": 0.91
+}
+```

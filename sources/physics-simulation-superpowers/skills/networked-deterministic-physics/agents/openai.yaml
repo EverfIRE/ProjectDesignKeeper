@@ -1,0 +1,6 @@
+interface:
+  display_name: "Networked Deterministic Physics"
+  short_description: "Specify authoritative multiplayer physics"
+  default_prompt: "Use $networked-deterministic-physics to define a testable multiplayer physics contract."
+policy:
+  allow_implicit_invocation: true

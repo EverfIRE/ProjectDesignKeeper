@@ -1,0 +1,171 @@
+# ChainQueen 技术审阅（2026-08-30）
+
+## 1. Verdict
+
+[INFERENCE:I001 from=F001,F002] 结论：对“为 UE5 多人游戏启动 120 Hz、authoritative gameplay soft-body 原型”给出 **unsupported / no-go**；论文可支持其作者在特定 GTX 1080 Ti、简单落方块、CUDA 微基准上分别报告的 forward/backward 吞吐，但不能支持 120 Hz 生产工作负载、端到端帧预算或网络 authoritative 路径。
+
+[UNKNOWN:U001] 120 Hz 的完整 real-time tuple（场景复杂度、端到端帧时、硬件、精度、碰撞/传输/同步/渲染/I/O/网络是否包含）在已读论文与页面中未给出；这直接阻断产品结论；下一步是在获授权的目标 UE5 workload 上制定并执行计时协议。
+
+[INFERENCE:I002 from=F003,F004] 不接受“接触处梯度精确、平滑且可直接控制”的推论：作者 derivation 的 friction projection 含 `max`、`min` 和 Heaviside `H`，所以接触转换处不具全局平滑性；其误差表是特定测试的作者报告，不是对所有接触或生产控制的独立验证。
+
+[INFERENCE:I003 from=F005,F006] 不接受“公开仓库＝可许可集成、完整复现、论文同版”的推论：页面自称 legacy v1、说明未发布最新 private code，并建议研究项目等待 v2；该 mutable 页面没有提供本审阅已建立的完整 commit SHA、许可证明或论文结果完备性。
+
+**置信度：low（对 no-go 的置信度）**；最强限制是 `U001` 和 `U003`，而不是对作者已报告数字的否认。
+
+## 2. Core idea
+
+[FACT:F001] AUTHOR_CLAIM：ICRA 论文将 ChainQueen 描述为基于 MLS-MPM 的混合 Lagrangian–Eulerian 可微软体模拟器，使用粒子与网格并在两者间传递状态；论文说以解析推导梯度进行 GPU backward。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=1;sec=III;para=1-3] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;para=3]
+
+[FACT:F002] AUTHOR_CLAIM：前向一步按 P2G、grid operations、G2P 组织：质量与动量转格点、以 `v_i=p_i/m_i` 归一化、再更新 `v_p`、`C_p`、`F_p`、`x_p`；文中为简化省略了 boundary conditions 和 gravity。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=1;sec=III;eq=3-6] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;eq=7-10]
+
+[FACT:F003] AUTHOR_CLAIM：作者 derivation PDF 以哈希固定的 manifestation 给出变量依赖与反向链式法则；`P_p=P_p(F_p)+F_pσ^a_p`，并给出对应的 backward 项。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=6;sec=VII;eq=11-18] [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=9;sec=X;eq=77-84]
+
+[FACT:F004] AUTHOR_CLAIM：作者把 actuator 写为 `A_p=F_p σ^a_p F_p^T`、`σ^a_p=Diag(a_x,a_y,a_z)`；控制例中为 `a=tanh(Wz+b)`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;para=4] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=4;sec=V.B;para=1]
+
+[FACT:F005] DIRECT_OBSERVATION：本评测仅静态读取允许的论文、推导 PDF、项目页和仓库主页；未执行作者代码、未克隆仓库、未安装依赖，因而没有 compilation、smoke test 或 independent reproduction 结果。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;fig=1] [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=6;sec=VII;eq=11-18] [S:project-page@accessed:2026-08-30#fragment=main;para=1] [S:repo-web@accessed:2026-08-30#fragment=README;para=1]
+
+术语映射：`AUTHOR_CLAIM → FACT`（仅是作者明确报告的事实），`DIRECT_OBSERVATION → FACT`（本次实际静态读取的事实，非独立实验验证），`INFERENCE → INFERENCE`，`UNKNOWN → UNKNOWN`，`CONTRADICTION → CONTRADICTION`。本文没有同一 scope 的互斥来源主张，故无 `CONTRADICTION` 记录。
+
+## 3. Source manifest
+
+| source ID | role / manifestation | access / rights / inspection boundary |
+|---|---|---|
+| icra-paper | [FACT:F006] 论文 PDF；以 DOI `10.1109/ICRA.2019.8794333` 标识的 ICRA 2019 论文。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=0;sec=title] | [FACT:F007] 已读 7 页作者托管 PDF；可支持打印的公式、表、图与作者报告，不能支持独立运行或当前硬件外推。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=0;sec=abstract] |
+| derivation-pdf | [FACT:F008] 作者梯度推导 PDF；无命名 immutable revision，已临时下载并计算 SHA-256 `25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d`，临时文件已删除。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=0;sec=title] | [FACT:F009] 已读 13 页；可支持该哈希 PDF 中的 derivation，不能证明其就是某个版本化出版补充材料。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=6;sec=VII;eq=11-18] |
+| project-page | [FACT:F010] 作者署名项目页（mutable HTML，accessed 2026-08-30），链接 Conference Paper 与 Non-GPU Code。 [S:project-page@accessed:2026-08-30#fragment=main;para=1] | [UNKNOWN:U002] 项目页未给出性能协议、许可证或可复现证明；它只能支持链接关系，不能升级数值或 artifact 结论；下一步是取得版本化 artifact manifest。 |
+| repo-web | [FACT:F011] GitHub 页面（mutable HTML，accessed 2026-08-30）展示名为 “The (Legacy) ChainQueen Differentiable MPM Solver (v1)” 的 README。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] | [UNKNOWN:U003] 未建立完整 commit SHA、归档、许可文本或与论文输出的逐项关系；不作 line-level repository fact claim；下一步由作者提供 paper-release commit、license 和 result manifest。 |
+| doi-record | [UNKNOWN:U004] 允许访问的 DOI landing record 返回内部错误，未读取为证据；论文身份在本审阅中按题设 DOI 与 PDF 标题处理；下一步在可访问时读取 landing record。 |
+
+## 4. Claim–evidence matrix
+
+| normalized claim | source wording anchor | scope/qualifiers | evidence type | evidence anchors | relation | coverage | confidence | linked contradiction/unknown IDs |
+|---|---|---|---|---|---|---|---|---|
+| [FACT:F012] AUTHOR_CLAIM：CUDA 3D benchmark 对 8,000 particles 报告 F `0.392 ms`、B `0.406 ms`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-8000] | [FACT:F012] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-8000] | GTX 1080 Ti；CUDA C++ benchmark，非已证明端到端游戏帧。 | controlled quantitative experiment | [FACT:F012] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-8000] | supports | 仅作者的简单 benchmark workload | medium | U001 |
+| [FACT:F013] AUTHOR_CLAIM：论文 Table II 对 64,000 particles 报告 F `1.594 ms`、B `1.774 ms`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-64000] | [FACT:F013] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-64000] | 单独 F 或 B；没有 F+B+UE5/网络的总时。 | controlled quantitative experiment | [FACT:F013] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-64000] | partially_supports | 64k、指定旧 GPU 的 author report | medium | U001 |
+| [UNKNOWN:U005] “forward 和 backward 都能在我们的 120 Hz production workload 实时运行”缺少同 workload 的完整 tuple 与测量；已查论文性能表和项目页；该未知阻断 go；下一步测量目标服务器的 end-to-end P95/P99。 | [UNKNOWN:U005] UNKNOWN evidence。 | UE5、多玩家、authoritative、120 Hz。 | independent reproduction | [UNKNOWN:U005] UNKNOWN evidence。 | unverified | 无 | low | U005 |
+| [FACT:F014] AUTHOR_CLAIM：作者在 A1/A2 analytic 3D float32、B/C numeric 2D float64 的 Table III 中报告相对误差，并说 B/C 的 finite difference ground truth 使用 double precision。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;table=III] | [FACT:F014] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;table=III] | 特定 case、步数与精度。 | controlled quantitative experiment | [FACT:F014] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;table=III] | supports | 论文列出的 A1/A2/B/C | medium | U006 |
+| [INFERENCE:I004 from=F014,F015] “接触梯度精确且平滑、足以直接做控制”被 friction projection 的分段算子限制；Table III 不覆盖全部接触转换。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=102-116] | [FACT:F015] AUTHOR_CLAIM：friction projection 使用 `max`、`min` 与 `H(x):=[x≥0]`。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=102-116] | 分段边界与碰撞/摩擦状态切换。 | derivation | [FACT:F015] 同左。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=102-116] | limits | 无全局平滑保证 | high | U006 |
+| [FACT:F016] AUTHOR_CLAIM：Flex 比较采用 falling cube；为视觉相似而设 ChainQueen material parameters，Flex 用每 frame 两 steps、每 step 四 iterations，并明确说 PBD 不能精确设相同 Young’s modulus。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=IV.A;para=1-2] | [FACT:F016] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=IV.A;para=1-2] | 视觉匹配的落方块；baseline 非物理参数等同。 | controlled quantitative experiment | [FACT:F016] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=IV.A;para=1-2] | limits | Flex 的该 benchmark | medium | U007 |
+| [UNKNOWN:U008] “比较公平且可外推到当前硬件”未被已读来源证明；论文报告 GTX 1080 Ti、没有现代硬件同设定复测；下一步固定两实现版本与参数/质量指标后在目标硬件复测。 | [UNKNOWN:U008] UNKNOWN evidence。 | 当前硬件及 production 游戏。 | independent reproduction | [UNKNOWN:U008] UNKNOWN evidence。 | unverified | 无 | low | U008 |
+| [FACT:F017] DIRECT_OBSERVATION：README 将仓库称为旧的 Oct 2018 v1，称为论文构建，但说最新版本含 private code、未发布，并仅发布 legacy v1 without unpublished results。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] | [FACT:F017] 同左。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] | mutable README；不等于固定 revision 或完整性证明。 | artifact inspection | [FACT:F017] 同左。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] | limits | README 所述 legacy artifact | medium | U003 |
+| [UNKNOWN:U009] “仓库完整覆盖论文、可直接复现、公开即允许集成”没有固定 commit、LICENSE、inputs、baseline、raw outputs 或复现记录；下一步取得这些材料并在授权环境执行。 | [UNKNOWN:U009] UNKNOWN evidence。 | 论文全部结果及商用/集成权利。 | independent reproduction | [UNKNOWN:U009] UNKNOWN evidence。 | unverified | 无 | low | U003 |
+
+## 5. Equations / assumptions audit
+
+| purpose | symbols/dimensions/units/domains | dependencies | status | derivation check | implementation mapping | numerical hazards | claim impact |
+|---|---|---|---|---|---|---|---|
+| [FACT:F018] 前向 P2G/G2P 与 `F^{n+1}_p=(I+ΔtC^{n+1}_p)F^n_p`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=1;sec=III;eq=3-6] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;eq=7-10] | `Δt` 时间、`Δx` 网格尺度、`x,v` 向量、`F,C,P` 矩阵，`m` 标量。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=1;sec=III;table=I] | `N`、`P(F)`、P2G→grid normalize→G2P。 | plausible | [FACT:F019] derivation PDF 给出同一 time-step dependencies。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=6;sec=VII;eq=11-18] | [UNKNOWN:U010] 无 pinned implementation mapping；下一步固定 commit 后逐式审计。 | `m_i` 除法、显式 `Δt` 与精度/条件数未在本审阅执行验证。 | [INFERENCE:I005 from=F018,F019] 支持方法描述，不支持实际 code-path 等价或稳定性泛化。 |
+| [FACT:F020] 应力/actuation：`P_p=P_p(F_p)+F_pσ^a_p`，并由 `σ^a_p` 对应 backward。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=6;sec=VII;eq=11] [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=10;sec=X;eq=99-101] | `F,P,σ^a` 为矩阵；`P(F)` 依赖 constitutive energy。 | plausible | [FACT:F021] 对 `F` 的 reverse 项显式含 `∂²Ψ/∂F∂F`。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=9;sec=X;eq=77-81] | [UNKNOWN:U010] 同上。 | constitutive Hessian、材料参数、float precision 和 conditioning 未作独立检查。 | [INFERENCE:I006 from=F020,F021] 解析反传的形式存在，不是任意材料/参数下梯度精度的保证。 |
+| [FACT:F022] friction projection 定义 `l_it=sqrt(sum(v_itα²)+ε)`、`l*_it=max{l_it+c_i min{l_in,0},0}` 并使用 Heaviside。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=102-116] | 法向 `n_i`、切向/法向速度与 `ε`；域含接触边界。 | verified | [FACT:F023] PDF 给出该 projection 的显式偏导。 [S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=110-116] | [UNKNOWN:U010] 同上。 | `max/min/H` 在阈值处分段；`ε` 的取值和连续性/稳定性影响未由已读源量化。 | [INFERENCE:I007 from=F022,F023] 不能把“有 analytic backward”提升为所有接触状态的精确平滑梯度。 |
+| [FACT:F024] 论文给出显式积分限制 `Δt=CΔx sqrt(ρ/E)`，并说刚性材料需要很严格的 `Δt`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=5;sec=VI;para=2] | `ρ` 密度、`E` Young’s modulus、`Δx` 空间尺度。 | verified | [FACT:F024] 同左。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=5;sec=VI;para=2] | [UNKNOWN:U010] 同上。 | 高 `E` 或细网格缩小 stable step；UE5 目标 `Δt`/substeps 未给。 | [INFERENCE:I008 from=F024] 这是 120 Hz 固定预算的结构性风险而非性能保证。 |
+
+## 6. Evaluation audit
+
+[FACT:F025] AUTHOR_CLAIM：性能表以 NVIDIA GTX 1080 Ti，分开列 F/B `Time per Frame`；CUDA benchmark 使用 C++ 而非 Python 以避开 TensorFlow runtime overhead。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;para=4]
+
+[FACT:F026] AUTHOR_CLAIM：场景是简单 falling cube；粒子规模包括 8,000、64,000、512,000；512k 时 F `10.501 ms`、B `11.594 ms`，表中 2D TensorFlow/CUDA 也另列。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=IV.A;para=1]
+
+[FACT:F027] AUTHOR_CLAIM：Flex 协议为两 steps/frame、四 iterations/step，材料只按视觉相似调节，且参数不能完全一致。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=IV.A;para=2]
+
+[FACT:F028] AUTHOR_CLAIM：accuracy cases 包括 3D float32 A1/A2，2D float64 B/C，D1 pneumatic deformation 与 D2 15 cm drop；Table III 给相对误差，A1/A2 analytic ground truth，B/C double-precision finite difference ground truth。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;para=1] [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;table=III]
+
+[UNKNOWN:U011] 评测未在已读来源中报告重复次数、方差/置信区间、P95/P99、完整工作预算、ChainQueen 的每 frame steps/substeps、collision cadence、UE5/渲染/网络流水线包含项；这令数字只能是 author-reported solver benchmark；下一步发布 protocol 与原始计时输出。
+
+[INFERENCE:I009 from=F025,F026,F027,U011] `Time per Frame` 不能等同 end-to-end multiplayer frame：F 与 B 分开计、benchmark 为 falling cube 且 Flex 参数仅视觉对齐；当前硬件外推和 120 Hz 结论均未建立。
+
+## 7. Artifacts / license / access status
+
+| field | status | evidence / next action |
+|---|---|---|
+| artifact_presence | [FACT:F029] observed | [FACT:F029] DIRECT_OBSERVATION：允许的 GitHub 页存在 repository UI 与 README。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] |
+| author_authenticity | [UNKNOWN:U012] unknown | [UNKNOWN:U012] 已读项目页作者名单与 repo-web，但未建立 cryptographic/authenticated ownership；这不影响 no-go；下一步作者签名 release 或可验证归属。 |
+| paper_revision_identified | [UNKNOWN:U013] partial | [UNKNOWN:U013] DOI 身份来自题设、PDF 有标题；repo 没有固定 paper commit；下一步取得 publication commit SHA。 |
+| immutable_archive | [UNKNOWN:U014] unknown | [UNKNOWN:U014] 已读 repo-web 未建立 archive/SWHID/DOI artifact；下一步提供 immutable archive。 |
+| license_clarity | [UNKNOWN:U015] unknown | [UNKNOWN:U015] 未读取到可作为集成许可证据的固定 LICENSE 文本；下一步提供 license file 与商业集成确认。 |
+| pinned_dependencies | [UNKNOWN:U016] not established | [FACT:F030] README 列 legacy taichi、CUDA 8.0+、tensorflow-gpu、gcc-6，但没有本审阅固定的 dependency lock/commit。 [S:repo-web@accessed:2026-08-30#fragment=README;para=2] |
+| build_instructions | [FACT:F031] present-but-legacy | [FACT:F031] README 给出 Arch/Ubuntu 16.04/18.04 的安装步骤及 `ti build`。 [S:repo-web@accessed:2026-08-30#fragment=README;para=2] |
+| smoke_test_status | [FACT:F032] not executed | [FACT:F032] DIRECT_OBSERVATION：本次未执行 code；README 的 runnable demos 不是本次 smoke test。 [S:repo-web@accessed:2026-08-30#fragment=README;para=2] |
+| complete_paper_inputs | [UNKNOWN:U017] unknown | [UNKNOWN:U017] README 明称 legacy v1 without unpublished results；未建立每个 paper input；下一步清单化发布。 |
+| complete_baselines | [UNKNOWN:U018] unknown | [UNKNOWN:U018] 已读材料只述 Flex benchmark；未建立 baseline version/config/output 包；下一步发布 baseline manifests。 |
+| raw_outputs | [UNKNOWN:U019] unknown | [UNKNOWN:U019] 未读到 raw timing/error/figure outputs；下一步发布带哈希的原始输出。 |
+| figure/table_scripts | [UNKNOWN:U020] unknown | [UNKNOWN:U020] 未建立图表生成脚本与输出关系；下一步发布 scripts 与 invocation。 |
+| independent_reproduction | [FACT:F033] not performed | [FACT:F033] DIRECT_OBSERVATION：本次未运行 artifact，故没有 independent reproduction。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1] |
+| official_badges | [UNKNOWN:U021] unknown | [UNKNOWN:U021] 已读允许页面未建立官方 badge 证据；下一步提供正式 badge record（若有）。 |
+
+## 8. Limitations, failure cases 与 real-time/game-transfer boundary
+
+[FACT:F034] AUTHOR_CLAIM：论文讨论 explicit `Δt` 限制，并建议 nearly-rigid objects 使用 rigid-body simulator，与其 deformable simulator 耦合是未来方向。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=5;sec=VI;para=2]
+
+[FACT:F035] AUTHOR_CLAIM：README 明说此为旧 Oct 2018 v1，未剥离 private code 的最新版本，且建议自建 research project 等待 v2。 [S:repo-web@accessed:2026-08-30#fragment=README;para=1]
+
+[INFERENCE:I010 from=F015,F024,F025,U011] real-time 仅是作者特定 solver workload 的标签；它不涵盖 UE5 的 collision integration、game-thread/render-thread synchronization、replication、authoritative rollback/lockstep 或多人网络成本，故不能转译为 production SLA。
+
+[INFERENCE:I011 from=F015,F034] failure boundary：接触分支和刚度导致的 `Δt` 限制会使优化与固定 120 Hz 预算对参数、网格和碰撞情形敏感；这是一项需要量测的风险，不是论文已证明的 UE5 failure rate。
+
+## 9. Confidence
+
+[INFERENCE:I012 from=F012,F013,F014,F016,F017,U001,U003,U011] 综合置信度为 **0.30 / low**：对论文内作者报告的表格与公式有中等到高的文本证据；对“120 Hz authoritative UE5 integration、现代硬件、接触梯度的通用精确性、许可与完整复现”证据不足，故决策保持 no-go。
+
+## 10. Minimal reproduction target
+
+[FACT:F036] 目标：仅绑定论文 Table II 的单一 author-reported 数值——GTX 1080 Ti、64,000 particles、CUDA 的 3D F `1.594 ms` 与 B `1.774 ms`。 [S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-64000]
+
+[UNKNOWN:U022] 配置 blocker：Table II 未给可复跑的完整 scene file、步长/substeps、编译器/driver、固定 repository revision 和原始计时；下一步作者提供这些输入及 commit SHA，才可执行 reproduction route。
+
+[UNKNOWN:U023] pass/fail blocker：论文给出数值而未给允许误差、重复次数、测时定义或统计门；不虚构 tolerance；下一步由论文作者或产品负责人批准测量 protocol 与接受准则。
+
+[INFERENCE:I013 from=F036,U022,U023] 该最小目标的计划状态为 `pending_route: reproducing-simulation-papers`，预期资源/运行时未知、需保存 command logs、环境 manifest、输出和 SHA-256；即使达成，也只检验该 Table II claim，不验证 120 Hz end-to-end、Flex 公平性、接触梯度通用性或 UE5 多人集成。
+
+## 11. Unknowns closure
+
+| unknown record | sources checked | verdict effect | resolving action |
+|---|---|---|---|
+| [UNKNOWN:U001] | icra-paper、derivation-pdf、project-page、repo-web | 阻断 120 Hz go | 目标 UE5 端到端 protocol 与测量 |
+| [UNKNOWN:U002] | project-page | 不可由宣传页证明性能/许可/复现 | versioned artifact manifest |
+| [UNKNOWN:U003] | repo-web、project-page | 阻断 license/reproduction/paper identity | paper-release SHA、LICENSE、result manifest |
+| [UNKNOWN:U004] | DOI URL | 出版 landing 未作为证据 | 可访问时读取 DOI landing |
+| [UNKNOWN:U005] | icra-paper、project-page | 阻断 production real-time claim | target-server P95/P99 measurement |
+| [UNKNOWN:U006] | icra-paper、derivation-pdf | 限制 contact-gradient claim | contact-transition gradient tests |
+| [UNKNOWN:U007] | icra-paper | 限制 Flex fairness | matched baseline manifests |
+| [UNKNOWN:U008] | icra-paper、repo-web | 阻断 modern-hardware transfer | controlled target-hardware rerun |
+| [UNKNOWN:U009] | repo-web、project-page | 阻断 integration/reproduction assertion | license + complete artifact package |
+| [UNKNOWN:U010] | icra-paper、derivation-pdf、repo-web | 方程到实现未验证 | pinned commit 的逐式 static audit |
+| [UNKNOWN:U011] | icra-paper、project-page | 时间数字不等于 end-to-end frame | publish protocol/raw timings |
+| [UNKNOWN:U012] | project-page、repo-web | artifact provenance 未独立认证 | signed release/ownership proof |
+| [UNKNOWN:U013] | icra-paper、repo-web | paper-code identity 未建立 | publication commit SHA |
+| [UNKNOWN:U014] | repo-web | artifact persistence 未建立 | archival DOI/SWHID |
+| [UNKNOWN:U015] | repo-web | 法律集成未获证 | immutable LICENSE + counsel review |
+| [UNKNOWN:U016] | repo-web | 当前 build/reproduction 未建立 | pinned dependency manifest |
+| [UNKNOWN:U017] | repo-web | 全论文输入覆盖未知 | inputs inventory |
+| [UNKNOWN:U018] | icra-paper、repo-web | baseline reproducibility 未建立 | baseline versions/configs/outputs |
+| [UNKNOWN:U019] | repo-web | 结果审计不可行 | raw output archive |
+| [UNKNOWN:U020] | repo-web | 图表再生未知 | figure/table scripts |
+| [UNKNOWN:U021] | project-page、repo-web | 不得声称 badge | official program record |
+| [UNKNOWN:U022] | icra-paper、repo-web | 最小复现尚不可执行 | complete Table II package |
+| [UNKNOWN:U023] | icra-paper | 不得虚构 pass gate | author/owner-approved protocol |
+
+## 12. JSON adapter
+
+{
+  "schema_version": "1.0",
+  "paper": {
+    "title": "ChainQueen: A Real-Time Differentiable Physical Simulator for Soft Robotics",
+    "authors": ["Yuanming Hu", "Jiancheng Liu", "Andrew Spielberg", "Joshua B. Tenenbaum", "William T. Freeman", "Jiajun Wu", "Daniela Rus", "Wojciech Matusik"],
+    "year": 2019,
+    "doi": "10.1109/ICRA.2019.8794333",
+    "primary_link": "https://jiajunwu.com/papers/chainqueen_icra.pdf"
+  },
+  "contribution_type": "可微 MLS-MPM 软体机器人模拟器",
+  "claims": [
+    {"claim": "作者在 GTX 1080 Ti 的 64,000-particle CUDA benchmark 报告 forward 1.594 ms、backward 1.774 ms。", "evidence_anchors": ["[S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II;row=Ours-3D-64000]"]},
+    {"claim": "作者为若干 analytic/numeric 测试报告 forward/gradient 相对误差。", "evidence_anchors": ["[S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=3;sec=IV.B;table=III]"]},
+    {"claim": "120 Hz UE5 authoritative multiplayer production suitability 未获支持。", "evidence_anchors": ["[S:icra-paper@doi:10.1109/ICRA.2019.8794333#page=2;sec=III;table=II]", "[S:derivation-pdf@sha256:25ccfcce8e614c9f8cb35a18507de65f129cd00bdc1e70777420265435e31b6d#page=11;sec=XI;eq=102-116]"]}
+  ],
+  "methods_assumptions": ["MLS-MPM 的 P2G、grid operations、G2P 与解析 backward。", "显式时间积分受 Δt=CΔx sqrt(ρ/E) 限制。", "摩擦投影含 max/min/Heaviside 分段算子。"],
+  "experimental_conditions": ["NVIDIA GTX 1080 Ti；Table II 分别计量 forward 和 backward。", "性能场景为 falling cube；Flex 使用 two steps/frame、four iterations/step 且视觉材料匹配。", "准确性测试混用 3D float32 与 2D float64。"],
+  "artifacts": {"repository_status": "观察到 mutable legacy v1 README；无固定 paper commit、license、archive 或独立复现证据。", "execution_status": "未执行作者代码。"},
+  "limitations": ["完整 120 Hz end-to-end tuple 未报告。", "接触状态切换的全局平滑/精确梯度未建立。", "仓库完整性、许可和论文同版关系未建立。"],
+  "real_time_applicability": "仅有特定 GTX 1080 Ti solver benchmark 的作者报告；不构成 UE5 120 Hz multiplayer authoritative production 支持。",
+  "verdict": "unsupported",
+  "confidence": 0.3
+}

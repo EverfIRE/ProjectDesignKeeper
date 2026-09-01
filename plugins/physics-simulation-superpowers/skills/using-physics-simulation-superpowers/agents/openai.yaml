@@ -1,0 +1,6 @@
+interface:
+  display_name: "Physics Simulation Router"
+  short_description: "Route real-time physics work to precise skills"
+  default_prompt: "Use $using-physics-simulation-superpowers to choose the minimum physics workflow."
+policy:
+  allow_implicit_invocation: true

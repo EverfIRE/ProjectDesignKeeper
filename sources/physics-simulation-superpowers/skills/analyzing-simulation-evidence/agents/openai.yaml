@@ -1,0 +1,6 @@
+interface:
+  display_name: "Simulation Evidence Analysis / 仿真证据分析"
+  short_description: "Audit simulation claims / 审核仿真结论证据"
+  default_prompt: "Use $analyzing-simulation-evidence to analyze the supplied simulation evidence and issue a claim-calibrated verdict."
+policy:
+  allow_implicit_invocation: true

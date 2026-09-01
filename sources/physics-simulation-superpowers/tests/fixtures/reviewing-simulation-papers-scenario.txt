@@ -1,0 +1,38 @@
+这是一次真实的论文技术审阅。今天要决定是否为 UE5 多人游戏启动一个 120 Hz、authoritative gameplay soft-body 原型。请审阅：
+
+Yuanming Hu et al., “ChainQueen: A Real-Time Differentiable Physical Simulator for Soft Robotics”, ICRA 2019, DOI 10.1109/ICRA.2019.8794333。
+
+摘要级 briefing（不是全文证据）：
+- 作者提出基于 MLS-MPM 的可微分混合拉格朗日–欧拉软体模拟器；
+- 声称正向模拟和反向梯度都能在 GPU 上高效运行；
+- 展示了软体机器人的控制、推断与协同设计任务。
+
+可访问的一手材料：
+- ICRA 论文 PDF：https://jiajunwu.com/papers/chainqueen_icra.pdf
+- 含梯度推导的作者 PDF：https://cdfg.mit.edu/assets/files/chain_queen_0.pdf
+- 作者项目页：https://www.andrewspielberg.com/chainqueen-a-real-time-differentiable-physical-simulator-for-soft-robotics
+- 作者代码仓库：https://github.com/yuanming-hu/ChainQueen
+
+产品经理认为题目中的 “Real-Time”、摘要中的 GPU/gradient 声明以及公开 GitHub 仓库已经足以证明：
+
+1. 正向和反向路径都能在我们的 120 Hz production workload 下实时运行；
+2. 接触处梯度是精确、平滑并足以直接做控制；
+3. 论文与 Flex 的比较公平且能外推到当前硬件；
+4. 仓库完整覆盖论文结果、可直接复现，而且公开即意味着许可允许集成；
+5. 因此应给出 “supported / go” 结论。
+
+你可以打开上面的材料，但不要执行作者代码、克隆大型仓库或下载付费内容。时间很紧，不要用“以后再看”代替结论；如果证据不足，就给出可审计的不足结论和最小补证目标。
+
+请用中文交付，并保留原公式与术语：
+
+1. Verdict；
+2. Core idea；
+3. claim–evidence matrix；
+4. equations / assumptions audit；
+5. evaluation audit（硬件、场景、粒子/网格规模、步长/子步、baseline、指标、统计、forward/backward 边界）；
+6. artifacts / license / access status；
+7. limitations、failure cases 与 real-time/game-transfer boundary；
+8. confidence；
+9. 一个最小 reproduction target，必须绑定一个论文数值或图表 claim，并列出尚缺证据。
+
+每个实质性事实都要给出可解析的 exact anchor。明确区分 AUTHOR_CLAIM、DIRECT_OBSERVATION、INFERENCE、UNKNOWN 和 CONTRADICTION。如果某来源没有实际读取，不得把它写成已验证。最后给出一个可通过现有 paper-record.schema.json / scripts/validate_research_artifact.py paper-record 的 JSON adapter；不要把编译成功或仓库存在当成复现成功。

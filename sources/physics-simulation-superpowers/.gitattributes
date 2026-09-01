@@ -1,0 +1,125 @@
+tests/fixtures/character-controller-enabled-response.txt -whitespace
+tests/fixtures/vehicle-physics-baseline-response.txt -text
+tests/fixtures/vehicle-physics-enabled-attempt-1-response.txt -text -whitespace
+tests/fixtures/vehicle-physics-enabled-response.txt -text
+tests/fixtures/cloth-rope-soft-bodies-baseline-response.txt -text
+tests/fixtures/cloth-rope-soft-bodies-enabled-attempt-1-response.txt -text
+tests/fixtures/cloth-rope-soft-bodies-enabled-response.txt -text
+tests/fixtures/research/artifact-root/alpha.txt -text whitespace=-trailing-space
+tests/fixtures/research/artifact-root/binary.bin -text whitespace=-trailing-space
+tests/fixtures/research/artifact-root/nested/value.txt -text whitespace=-trailing-space
+.superpowers/fixtures/development-provenance/rapier-physics-enabled-attempt-2-source.txt -text
+tests/fixtures/destruction-fracture-fields-baseline-response.txt -text
+tests/fixtures/destruction-fracture-fields-enabled-attempt-1-response.txt -text
+tests/fixtures/destruction-fracture-fields-enabled-attempt-2-response.txt -text
+tests/fixtures/destruction-fracture-fields-enabled-attempt-3-response.txt -text
+tests/fixtures/destruction-fracture-fields-enabled-response.txt -text
+tests/fixtures/real-time-fluids-particles-baseline-response.txt -text
+tests/fixtures/real-time-fluids-particles-enabled-attempt-1-response.txt -text
+tests/fixtures/real-time-fluids-particles-enabled-response.txt -text
+tests/fixtures/real-time-fluids-particles-enabled-attempt-2-response.txt -text
+tests/fixtures/networked-deterministic-physics-baseline-response.txt -text
+tests/fixtures/networked-deterministic-physics-enabled-attempt-1-response.txt -text
+tests/fixtures/networked-deterministic-physics-enabled-attempt-2-response.txt -text
+tests/fixtures/networked-deterministic-physics-enabled-attempt-3-response.txt -text
+tests/fixtures/networked-deterministic-physics-enabled-attempt-4-response.txt -text
+tests/fixtures/networked-deterministic-physics-enabled-attempt-5-response.txt -text
+tests/fixtures/networked-deterministic-physics-scenario.txt -text
+tests/fixtures/debugging-testing-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/debugging-testing-physics-scenario.txt -text
+tests/fixtures/debugging-testing-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/debugging-testing-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/profiling-scaling-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/profiling-scaling-physics-scenario.txt -text
+tests/fixtures/profiling-scaling-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/profiling-scaling-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/profiling-scaling-physics-enabled-attempt-3-response.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-scenario.txt -text
+tests/fixtures/unreal-chaos-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-enabled-attempt-3-response.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-enabled-attempt-4-response.txt -text whitespace=-trailing-space
+evaluations/unreal-chaos-physics/attempt-5-evaluator-invocation.txt -text whitespace=-trailing-space
+tests/fixtures/unreal-chaos-physics-enabled-attempt-5-response.txt -text whitespace=-trailing-space
+tests/fixtures/unity-real-time-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/unity-real-time-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/unity-real-time-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/unity-real-time-physics-enabled-response.txt -text whitespace=-trailing-space
+skills/unreal-chaos-physics/SKILL.md -text
+skills/unreal-chaos-physics/references/unreal-chaos.md -text
+tests/fixtures/godot-jolt-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/godot-jolt-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/godot-jolt-physics-enabled-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-attempt-3-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-attempt-4-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-attempt-5-response.txt -text whitespace=-trailing-space
+tests/fixtures/native-jolt-physics-enabled-response.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-enabled-attempt-1.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-enabled-attempt-2.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-enabled-attempt-3.txt -text whitespace=-trailing-space
+tests/fixtures/nvidia-physx-sdk-enabled-response.txt -text whitespace=-trailing-space
+tests/fixtures/rapier-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/rapier-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/rapier-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/rapier-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/rapier-physics-enabled-response.txt -text whitespace=-trailing-space
+evaluations/rapier-physics/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-3-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-4-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-5-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-attempt-6-response.txt -text whitespace=-trailing-space
+tests/fixtures/box2d-physics-enabled-response.txt -text whitespace=-trailing-space
+evaluations/box2d-physics/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/surveying-real-time-physics-research-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/surveying-real-time-physics-research-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/surveying-real-time-physics-research-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/surveying-real-time-physics-research-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/surveying-real-time-physics-research-enabled-response.txt -text whitespace=-trailing-space
+evaluations/surveying-real-time-physics-research/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-enabled-response.txt -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/reviewing-simulation-papers-enabled-attempt-3-response.txt -text whitespace=-trailing-space
+evaluations/reviewing-simulation-papers/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/designing-simulation-experiments-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/designing-simulation-experiments-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/designing-simulation-experiments-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/designing-simulation-experiments-enabled-response.txt -text whitespace=-trailing-space
+evaluations/designing-simulation-experiments/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/analyzing-simulation-evidence-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/analyzing-simulation-evidence-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/analyzing-simulation-evidence-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/analyzing-simulation-evidence-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/analyzing-simulation-evidence-enabled-response.txt -text whitespace=-trailing-space
+evaluations/analyzing-simulation-evidence/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-enabled-attempt-2-response.txt -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-enabled-response.txt -text whitespace=-trailing-space
+tests/fixtures/reproducing-simulation-papers-preflight-blocked.json -text whitespace=-trailing-space
+tests/fixtures/manifests/reproduction-run-task28-enabled-attempt-2.json -text whitespace=-trailing-space
+evaluations/reproducing-simulation-papers/evaluation.json -text whitespace=-trailing-space
+tests/fixtures/translating-research-to-game-physics-scenario.txt -text whitespace=-trailing-space
+tests/fixtures/translating-research-to-game-physics-baseline-response.txt -text whitespace=-trailing-space
+tests/fixtures/translating-research-to-game-physics-enabled-attempt-1-response.txt -text whitespace=-trailing-space
+tests/fixtures/translating-research-to-game-physics-enabled-response.txt -text whitespace=-trailing-space
+evaluations/translating-research-to-game-physics/evaluation.json -text whitespace=-trailing-space
+references/sources.lock.json text eol=lf
+references/source-audit.md text eol=lf
+THIRD_PARTY_NOTICES.md text eol=lf
+README.zh-CN.md text eol=lf
+LICENSE text eol=lf

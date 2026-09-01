@@ -1,0 +1,1 @@
+{"schema_version":"1","run_id":"nonfinite","engine":"Jolt","units":"mks","timing":{"render_fps_target":NaN,"physics_hz":60,"fixed_dt_seconds":0.016,"max_substeps":1},"authority":"server","network":"none","platform":"Windows","budget":{"cpu_ms":1,"gpu_ms":1,"memory_mb":1},"seed":1}

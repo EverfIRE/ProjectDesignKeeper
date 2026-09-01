@@ -1,7 +1,7 @@
 {
-  "name": "project-design-keeper",
+  "name": "project-design",
   "interface": {
-    "displayName": "ProjectDesignKeeper"
+    "displayName": "ProjectDesign"
   },
   "plugins": [
     {
@@ -9,6 +9,18 @@
       "source": {
         "source": "local",
         "path": "./plugins/project-design-keeper"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "physics-simulation-superpowers",
+      "source": {
+        "source": "local",
+        "path": "./plugins/physics-simulation-superpowers"
       },
       "policy": {
         "installation": "AVAILABLE",

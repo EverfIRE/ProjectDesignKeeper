@@ -1,0 +1,6 @@
+interface:
+  display_name: "Godot Jolt Physics"
+  short_description: "Gate Godot/Jolt physics integration evidence"
+  default_prompt: "Use $godot-jolt-physics to freeze the Godot project context and produce a sourced 2D/3D physics integration plan."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,47 @@
+## Budget and capture contract
+
+不能由 120 FPS 对 138 FPS 推出 B 的物理快 15%；两次录制端到端条件均不匹配，平均 FPS 也不能归因到 physics。停止合并与质量改动，先建立版本化 capture manifest，并把未声明项列为阻塞项：
+
+- 客户端/服务器权威关系；目标 CPU、GPU、核心数、功耗/温控模式。
+- OS、驱动、编译器、build、图形/计算 backend 与版本；线程、作业、亲和性配置。
+- 固定 60 Hz tick、accumulator、backlog；相机、分辨率、VSync、帧率上限。
+- 场景、资源、随机种子、有序输入；RTT/jitter/loss、网络负载、rollback 历史。
+- 热身长度、采样长度、重复次数、置信规则；内存/physics 预算。
+- 场景容量上限、正确性不变量、容许物理误差与质量限制。
+
+测量 physics 的墙钟 CPU/GPU 毫秒，而非只看 FPS：p50/p95/p99、max、deadline miss、超预算面积/时长、tick backlog、resimulation debt。采集线程/核心 timeline、job queue/wait/steal/同步/空闲、关键路径；GPU timestamp、队列占用、传输、CPU↔GPU 同步、异步重叠与测量开销。
+
+每 tick 记录 active/sleeping body 与 shape、broadphase move/pair、narrowphase pair/manifold/contact point、island、constraint row/iteration、CCD candidate/TOI、query 类型/数量/hit/candidate、callback/event、spawn/despawn、rollback 深度/resim tick、分配与峰值/工作集内存、CPU/GPU stage。每次响应均使用并注明 `scripts/analyze_physics_trace.py`，产出分布与计数器证据。
+
+## Attribution and scaling
+
+先按粗阶段剖析：input/restore、broadphase、narrowphase/contact generation、island build、constraint solve、integrate/CCD、query/callback、serialization/hash；只对主导关键路径深入。将时间与计数器关联，并按 body、pair、contact、row、query、resimulated tick 归一化；一次只改变一个因素。相关性或 FPS 变化不是因果证据。
+
+建立实验基线：
+
+- A：恢复当前版本，但禁用“减半 iterations、关闭 CCD、每 4 tick 更新、GPU 搬运”等所有提案，使用完整 manifest。
+- B：从同一 A manifest 起始，仅启用一个具名改动；正确性检查、CPU/GPU timeline 完全一致。
+- 保持 gameplay physics 固定 60 Hz；服务器 physics CPU p95 是硬门槛，必须 `<= 3 ms`。当前 5.1 ms 仅表明风险，样本不完整前不可判定回归来源。
+
+在已声明的容量上限内，独立扫描 awake body、broadphase churn、contact density/manifold point、island size/count、constraint row/conditioning、CCD、query mix、spawn/despawn、rollback/resimulation、线程数与目标硬件。覆盖 rest/sleep、pile avalanche、joint chain/motor、CCD swarm、query storm、streaming churn、network-history-boundary，测得斜率、拐点、饱和/失衡与尾部行为，禁止外推。
+
+GPU 方案只能作为端到端实验：测 upload/readback、排队、同步、延迟、确定性与权威性、fallback、内存、小工作量 crossover，以及正确性矩阵；不能把 CPU 阶段“迁移”后只报告局部 GPU 时间。
+
+## Reversible quality tiers
+
+完成基线归因后，先划分 authoritative gameplay physics 与 cosmetic/secondary physics。任何 tier 必须声明：适用工作负载、受保护不变量、进入/退出信号、独立测得的阈值、滞回与最短驻留时间、过渡工作上界、状态映射/守恒、网络权威与事件语义、遥测和 rollback 行为。
+
+不得按逐帧 FPS 自动切换；这会振荡且掩盖瓶颈。sleep、cull、LOD、降频仅可用于已声明的非权威工作；caps/fallback 必须确定、可观测。iterations、CCD 与频率阈值在 error-versus-cost 及 fault/load 扫描证明前均未知：减半 iterations、关闭 CCD、4-tick 更新只能分别作为单变量实验，不能同时上线。不得静默裁剪 gameplay 或造成不可逆状态丢失。
+
+## Acceptance
+
+接受变更的条件是：
+
+- 新旧都有匹配 manifest、分布与计数器证据，并完成瓶颈归因。
+- 正确性、不变量、网络/rollback 结果一致，无隐藏工作迁移。
+- 服务器最坏场景 physics CPU p95 `<= 3 ms`。
+- 已声明并满足客户端 CPU/GPU、内存、尾延迟与容量预算。
+- 最坏场景矩阵通过，质量 tier 转换稳定、可逆、无振荡。
+- 使用 `scripts/analyze_physics_trace.py` 复现全部结论。
+
+拒绝只用平均 FPS、无归因、损失正确性、统计不充分或振荡的“优化”。出现非有限状态、权威/restore 损坏、缺少 instrumentation、丢失权威工作、不安全 cap/预算突破或 capture 不兼容时，立即停止发布。

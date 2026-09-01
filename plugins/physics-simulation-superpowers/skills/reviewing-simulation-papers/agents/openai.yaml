@@ -1,0 +1,6 @@
+interface:
+  display_name: "Simulation Paper Review / 仿真论文审阅"
+  short_description: "Audit simulation claims, equations, evidence, and artifacts"
+  default_prompt: "Use $reviewing-simulation-papers to produce a source-anchored simulation paper review with a schema-valid adapter."
+policy:
+  allow_implicit_invocation: true

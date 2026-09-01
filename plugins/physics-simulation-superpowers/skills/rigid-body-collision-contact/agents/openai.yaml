@@ -1,0 +1,6 @@
+interface:
+  display_name: "Rigid Body Collision & Contact"
+  short_description: "Diagnose contacts with scoped, measurable fixes"
+  default_prompt: "Use $rigid-body-collision-contact to diagnose a collision or contact failure."
+policy:
+  allow_implicit_invocation: true

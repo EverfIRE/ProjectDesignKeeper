@@ -1,0 +1,251 @@
+## 1. Verdict
+
+**NOT SUPPORTED / NO-GO（作为 120 Hz authoritative gameplay soft-body 的 production 启动结论）**。  
+可批准一个有明确退出条件的**研究性原型**，但不能从本文、补充推导和公开仓库推出“120 Hz 生产负载下 forward+backward 都实时”“接触梯度精确平滑”“Flex 对比可外推到当前硬件”“完整可复现且可合法集成”。
+
+本文确实证明了一个重要的研究能力：作者实现了 GPU 上的 MLS-MPM forward 与解析 backward，并在特定基准上报告了很高吞吐量。**AUTHOR_CLAIM / DIRECT_OBSERVATION**：GTX 1080 Ti、CUDA、64,000 particles 时分别报告 forward 1.594 ms、backward 1.774 ms；512,000 particles 时为 10.501 ms 与 11.594 ms。[论文 §IV.A，p.3，Table II](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)
+
+但 120 Hz 的单 tick 上限仅 **8.333 ms**；512k 的报告 forward 已超限，且表中没有“同一 gameplay tick 内 forward + backward + state snapshot/restore + collision/world integration + replication/serialization”的端到端数值。把这类独立 kernel/solver 数字直接转成 authoritative UE5 server tick 是**INFERENCE，且证据不足**。
+
+## 2. Core idea
+
+**AUTHOR_CLAIM**：ChainQueen 是一个针对软体机器人的可微分混合拉格朗日–欧拉 MLS-MPM（Moving Least Squares Material Point Method）模拟器；粒子与背景网格之间执行 P2G、grid operation、G2P，解析反向传播沿相反次序计算。[论文 §III，pp.2–3，Fig.1](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=2)
+
+其连续体起点为：
+
+\[
+\rho \frac{D v}{D t} = \nabla\cdot\sigma+\rho g,\qquad
+\frac{D\rho}{Dt}+\rho\nabla\cdot v=0
+\]
+
+[论文 Eq. (1)–(2)，p.2](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=2)
+
+关键离散更新包括：
+
+\[
+v_p^{n+1}=\sum_i N(x_i-x_p^n)v_i^n,\quad
+F_p^{n+1}=(I+\Delta t C_p^{n+1})F_p^n,\quad
+x_p^{n+1}=x_p^n+\Delta t v_p^{n+1}.
+\]
+
+[论文 Eq. (7)–(10)，p.3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)
+
+作者还加入材料空间对角 actuation stress：
+
+\[
+A_p=F_p\sigma_{pa}F_p^T,\qquad
+\sigma_{pa}=\operatorname{Diag}(a_x,a_y,a_z).
+\]
+
+[论文 §III，p.3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)
+
+**INFERENCE**：它很适合“离线或异步优化控制器/材料参数”的研究循环；这不等价于“每个联机 tick 都需要并能够运行 backward”。
+
+## 3. Claim–evidence matrix
+
+| 待审主张 | 结论 | 证据与边界 |
+|---|---|---|
+| forward 与 backward 都能在我们的 120 Hz production workload 实时运行 | **NOT SUPPORTED** | **DIRECT_OBSERVATION**：表 II 仅在 GTX 1080 Ti 的 CUDA solver 上分别计时；64k 为 1.594/1.774 ms，512k 为 10.501/11.594 ms。[Table II](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3) **UNKNOWN**：UE5、当前 GPU/CPU、服务器并发 actor 数、网格、内存、replication、同步与完整 tick 的测量。 |
+| 接触处梯度精确、平滑，足以直接控制 | **CONTRADICTION（“平滑/精确”部分）** | **DIRECT_OBSERVATION**：补充材料的摩擦投影用 `max`、`min` 和 Heaviside \(H(x):=[x\ge0]\)，在接触/摩擦切换面不可微或只能采用约定导数；因此不能称为全域平滑、精确梯度。[补充材料 §XI，Eq.102–116，p.12](https://cdfg.mit.edu/assets/files/chain_queen_0.pdf#page=12) **AUTHOR_CLAIM**：论文只验证了有限测试中的相对误差和“up to 1000 steps”稳定性，不是全游戏接触域保证。[论文 §IV.B，Table III](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4) |
+| 与 Flex 的比较公平且可外推到当前硬件 | **PARTIALLY SUPPORTED / NOT TRANSFERABLE** | **AUTHOR_CLAIM**：作者为视觉相似性设定 \(E,\nu,\rho\)，Flex 用每 frame 两步、每步四次迭代；并明确说 PBD 无显式 Young’s modulus，无法设成完全相同参数。[论文 §IV.A，p.4](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4) 这是透明但不是严格等价比较。**UNKNOWN**：现代硬件、driver、UE5 integration、同一物理保真/接触/场景下的对比。 |
+| 仓库完整覆盖论文、可直接复现且公开即允许集成 | **CONTRADICTION / UNKNOWN** | **DIRECT_OBSERVATION**：仓库自称为用于 ICRA 论文的旧版（2018-10），说明“without unpublished results”，并建议研究项目等待 v2。[README](https://github.com/yuanming-hu/ChainQueen#the-legacy-chainqueen-differentiable-mpm-solver-v1) **DIRECT_OBSERVATION**：可见根目录项目与 demos/tests，但该清单不构成论文结果复现证明。[仓库文件清单](https://github.com/yuanming-hu/ChainQueen) **UNKNOWN**：审阅到的仓库首页未见可验证的 `LICENSE` 条款；public 绝不自动授予集成、分发或商用权。 |
+| 应给 “supported / go” | **NO-GO** | 上述 runtime、determinism、network authority、license 和 reproduction 证据缺口均未闭合。 |
+
+## 4. Equations / assumptions audit
+
+- **DIRECT_OBSERVATION**：forward 是显式的粒子—网格离散，kernel \(N\)、\(\Delta x\)、\(\Delta t\)、\(F_p\)、\(C_p\)、PK1 stress \(P_p\) 都是状态/数值稳定性的一部分，而不是可忽略的实现细节。[论文 Table I、Eq.3–10，pp.2–3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=2)
+- **DIRECT_OBSERVATION**：作者为了整体梯度缓存所有 simulation states 到 “memo”。[论文 §III，p.3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)  
+  **INFERENCE**：长时域、多 actor 的每-tick backward 会产生显著内存、同步和延迟压力；该压力未由 Table II 覆盖。
+- **DIRECT_OBSERVATION**：显式积分步长约束写为
+  \[
+  \Delta t<C\Delta x\sqrt{\rho/E};
+  \]
+  \(E\) 越高，允许步长越严格，作者建议近刚体与刚体模拟器耦合。[论文 §VI，p.6](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=6)  
+  **INFERENCE**：120 Hz 外层 tick 不代表一次 MLS-MPM step 足够；稳定性可能要求 substeps，从而侵蚀 8.333 ms budget。
+- **CONTRADICTION**：接触模型并非处处光滑：\(l_{it}^{*}=\max\{l_{it}+c_i\min(l_{in},0),0\}\) 和 \(H(x)\) 明示分段分支。[补充材料 §XI，Eq.106–109，p.12](https://cdfg.mit.edu/assets/files/chain_queen_0.pdf#page=12)  
+  因而“解析 backward 已实现”应表述为**AUTHOR_CLAIM / DIRECT_OBSERVATION**，不能升级为“所有接触事件的精确、平滑物理梯度”。
+
+## 5. Evaluation audit
+
+- **硬件**：**DIRECT_OBSERVATION**：仅报告 NVIDIA GTX 1080 Ti；CUDA benchmark 用 C++ 而非 Python，以规避 TensorFlow runtime overhead。[论文 Table II 注释](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)  
+  **UNKNOWN**：GPU clock/power、driver、CPU 参与、内存占用、当前 GPU 与 UE5 RHI/渲染竞争。
+- **场景**：**DIRECT_OBSERVATION**：性能 benchmark 是“simple falling cube”，作者称此举便于分析和复现。[论文 §IV.A，p.3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)  
+  这不是多人游戏的复杂 mesh、多个软体对象、stacking、self-contact、角色/刚体交互或网络抖动场景。
+- **粒子/网格规模**：**DIRECT_OBSERVATION**：Table II 给出 8k、64k、512k particles；没有在该表报告 grid resolution、active grid occupancy、mesh/shape complexity 或多人并发规模。[Table II](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)
+- **步长/子步**：**DIRECT_OBSERVATION**：Flex 为 two steps/frame、four iterations/step；论文只说 PBD 和 MLS-MPM 都需 substepping 保证高刚度。[论文 §IV.A，p.4](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4)  
+  **UNKNOWN**：ChainQueen 在 Table II 每 “frame” 的 \(\Delta t\)、substep 数以及是否与 Flex 完全匹配。
+- **baseline**：**DIRECT_OBSERVATION**：baseline 是 NVIDIA Flex，且作者承认物理参数不能严格对齐。[论文 §IV.A，p.4](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4)  
+  **INFERENCE**：速度优势是该 benchmark/调参定义下的结果，不是所有软体求解器或现代 UE5 工作负载的排序。
+- **指标与统计**：**DIRECT_OBSERVATION**：性能是 time/frame 与 FPS；精度表对 A1/A2 使用 analytic ground truth、对 B/C 使用 float64 finite difference，并给出单组相对误差，如 A2 在 1000 steps 为 \(2.69\times10^{-5}\)。[论文 §IV.B，Table III](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4)  
+  **UNKNOWN**：重复次数、方差/CI、p95/p99、warm-up、GPU 同时负载、networked end-to-end latency、deterministic replay。
+- **forward/backward 边界**：**DIRECT_OBSERVATION**：Table II 的 F 与 B 是分开的行；Fig.7 的横轴特别说明 PPO 计 forward-only，而 ChainQueen 计 forward+backward simulation rounds。[论文 Fig.7，p.6](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=6)  
+  **INFERENCE**：不能把 F 或 B 的单项时间误读为一次 production tick 同时拥有二者的总时间。
+
+## 6. Artifacts / license / access status
+
+| 项目 | 状态 |
+|---|---|
+| ICRA 论文 PDF | **DIRECT_OBSERVATION / 已读取**：7 页，含 Table II、Table III、限制讨论。[PDF](https://jiajunwu.com/papers/chainqueen_icra.pdf) |
+| 作者补充 PDF | **DIRECT_OBSERVATION / 已读取**：含反向推导及 friction projection gradients。[PDF](https://cdfg.mit.edu/assets/files/chain_queen_0.pdf) |
+| 作者项目页 | **DIRECT_OBSERVATION / 已读取**：标识 ICRA 2019 并链接 conference paper 与 “Non-GPU Code”。[项目页](https://www.andrewspielberg.com/chainqueen-a-real-time-differentiable-physical-simulator-for-soft-robotics) |
+| GitHub | **DIRECT_OBSERVATION / 已读取但未执行**：public、含 demos、`src`、tests；README 明确是旧版并不含未公开结果。[仓库](https://github.com/yuanming-hu/ChainQueen) |
+| 论文结果完全复现 | **UNKNOWN**：未构建、未运行、未对照 commit/环境/资产/随机种子；“有 tests”或“能编译”均不构成复现。 |
+| 集成许可 | **UNKNOWN / BLOCKER**：已审阅页面不能提供明确许可授予；必须由法务/权利人确认适用 license、第三方依赖及商业分发权。 |
+
+## 7. Limitations、failure cases 与 real-time/game-transfer boundary
+
+- **接触切换失败模式**：接触进入/离开、stick–slip、法向翻转、零切向速度附近会跨越 `min/max/H` 分支；梯度可不连续，优化可能抖动、失效或给出不稳定控制信号。**DIRECT_OBSERVATION**：分支公式见补充材料 Eq.106–116；“会造成优化问题”是**INFERENCE**。[补充材料 §XI](https://cdfg.mit.edu/assets/files/chain_queen_0.pdf#page=12)
+- **刚度/步长失败模式**：增大 \(E\)、减小 \(\Delta x\)、更复杂接触或更小稳定步长会要求更多 substeps。**DIRECT_OBSERVATION**：论文给出 \(\Delta t\) 限制；游戏 workload 的后果是**INFERENCE**。[论文 §VI](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=6)
+- **authoritative multiplayer 边界**：论文没有评估跨 GPU/driver 的 bitwise determinism、fixed-point/rollback、server-side tick deadline、作弊面、snapshot/replication bandwidth、异步 GPU completion 或预测纠正。它们都是**UNKNOWN**，故不可从“GPU real-time”外推到 authoritative networked gameplay。
+- **forward/backward 产品边界**：本文将 backward 用于 inference/control/co-design 的优化过程。**AUTHOR_CLAIM**：论文展示 controller/design optimization；**UNKNOWN**：每个 gameplay tick 都需要把 reverse-mode gradient 放在 authority path 的产品需求与收益。[论文 §V](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4)  
+  推荐架构是**INFERENCE**：先把 backward 限于离线训练、校准或低频异步服务；在线 authority path 仅在实测通过后运行固定、受限的 forward solver。
+
+## 8. Confidence
+
+- “不能给 production go”：**高（0.92）**。结论来自直接性能边界、分段接触公式、旧版仓库声明及缺失的 multiplayer/license 证据。
+- “论文实现了有效的 GPU MLS-MPM forward/backward 原型”：**高（0.90）**。有方法、推导、性能表和精度表的直接证据。
+- “在特定 64k benchmark 可单独满足 120 Hz 计算预算”：**中（0.70）**，仅对报告的 GTX 1080 Ti C++ CUDA solver 的 F/B 单项、特定 falling-cube benchmark。
+- “能直接集成到 UE5 multiplayer production”：**低（0.05）**；这是未测、未授权、未证明的转移。
+
+## 9. 最小 reproduction target
+
+**目标：复现论文 Table II 的一个可核验点，而非“仓库可编译”。**
+
+- 固定目标：在 **NVIDIA GTX 1080 Ti、CUDA C++ interface、64,000 particles 的 3D falling-cube** 场景，分别达到论文报告的 **forward 1.594 ms/frame（628 FPS）** 与 **backward 1.774 ms/frame（563 FPS）**，测量定义与 Table II 一致。[论文 Table II，p.3](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=3)
+- 通过条件：
+  1. 指定 commit、CUDA/driver、编译器和 benchmark 配置可重建；
+  2. 预热后至少 30 次独立 run，每 run 至少 1,000 frames，报告 median、p95、p99、均值、标准差及 GPU memory；
+  3. F 与 B 分别计时，并另报同一 optimization iteration 的 F+B、memo 缓存和同步成本；
+  4. 对照数值：以论文 Table III 的 A2/1000-step 相对误差 \(2.69\times10^{-5}\) 作为 gradient sanity check，明确 precision 与 ground truth 定义。[论文 Table III，p.4](https://jiajunwu.com/papers/chainqueen_icra.pdf#page=4)
+- 尚缺证据：
+  - Table II 场景的完整参数：\(\Delta x,\Delta t\)、ChainQueen substeps、grid、材料、边界、初始状态、benchmark harness；
+  - 用于论文数字的精确源码 commit、依赖版本、数据和命令；
+  - 当前目标硬件与 UE5 server 的等价测试；
+  - 多 actor、目标碰撞、authoritative networking、rollback/replication 的 p99 与 determinism；
+  - 可用于商业集成的明确 license/第三方依赖许可。
+
+### paper-record JSON adapter
+
+以下是可交给 `paper-record.schema.json` / `scripts/validate_research_artifact.py` 的**保守 adapter**：它只把已读来源标为 evidence，不将仓库存在或编译成功标成复现成功；若现有 schema 对字段名有更严格枚举，应保留语义映射而非伪造 “reproduced”。
+
+```json
+{
+  "paper": {
+    "title": "ChainQueen: A Real-Time Differentiable Physical Simulator for Soft Robotics",
+    "authors": [
+      "Yuanming Hu",
+      "Jiancheng Liu",
+      "Andrew Spielberg",
+      "Joshua B. Tenenbaum",
+      "William T. Freeman",
+      "Jiajun Wu",
+      "Daniela Rus",
+      "Wojciech Matusik"
+    ],
+    "venue": "ICRA",
+    "year": 2019,
+    "doi": "10.1109/ICRA.2019.8794333"
+  },
+  "decision": {
+    "verdict": "not_supported",
+    "recommendation": "no_go_for_120hz_authoritative_production; conditional_research_prototype_only",
+    "confidence": 0.92
+  },
+  "sources": [
+    {
+      "url": "https://jiajunwu.com/papers/chainqueen_icra.pdf",
+      "access_status": "read",
+      "kind": "primary_paper",
+      "anchors": [
+        "p.3 Table II",
+        "p.4 Table III",
+        "p.4 §IV.A",
+        "p.6 §VI"
+      ]
+    },
+    {
+      "url": "https://cdfg.mit.edu/assets/files/chain_queen_0.pdf",
+      "access_status": "read",
+      "kind": "author_supplement",
+      "anchors": [
+        "p.12 §XI Eq.102-116"
+      ]
+    },
+    {
+      "url": "https://www.andrewspielberg.com/chainqueen-a-real-time-differentiable-physical-simulator-for-soft-robotics",
+      "access_status": "read",
+      "kind": "author_project_page",
+      "anchors": [
+        "ICRA 2019",
+        "Conference Paper",
+        "Non-GPU Code"
+      ]
+    },
+    {
+      "url": "https://github.com/yuanming-hu/ChainQueen",
+      "access_status": "read_not_executed",
+      "kind": "author_repository",
+      "anchors": [
+        "README: The (Legacy) ChainQueen Differentiable MPM Solver (v1)",
+        "README: old Oct 2018 version; without unpublished results",
+        "README: Installation"
+      ]
+    }
+  ],
+  "claims": [
+    {
+      "id": "runtime_120hz",
+      "status": "not_supported",
+      "evidence_type": ["DIRECT_OBSERVATION", "INFERENCE", "UNKNOWN"],
+      "anchor": "paper p.3 Table II",
+      "finding": "64k: F=1.594 ms and B=1.774 ms separately; 512k: F=10.501 ms and B=11.594 ms separately on GTX 1080 Ti CUDA. No UE5 authoritative end-to-end 120 Hz measurement."
+    },
+    {
+      "id": "contact_gradient_smooth_exact",
+      "status": "contradicted",
+      "evidence_type": ["DIRECT_OBSERVATION"],
+      "anchor": "supplement p.12 §XI Eq.102-116",
+      "finding": "Friction projection contains max, min, and H(x), so global smooth/exact contact gradients are not established."
+    },
+    {
+      "id": "flex_fairness_transfer",
+      "status": "partially_supported_not_transferable",
+      "evidence_type": ["AUTHOR_CLAIM", "DIRECT_OBSERVATION", "UNKNOWN"],
+      "anchor": "paper p.4 §IV.A",
+      "finding": "Authors matched visual behavior and disclose non-equivalent material parametrization; no modern-hardware or UE5 transfer evidence."
+    },
+    {
+      "id": "artifact_reproduction_license",
+      "status": "not_supported",
+      "evidence_type": ["DIRECT_OBSERVATION", "UNKNOWN"],
+      "anchor": "repository README legacy-v1 notice",
+      "finding": "Repository states it is old v1 and released without unpublished results. Repository public status is not a license grant; no integration license was verified."
+    }
+  ],
+  "reproduction": {
+    "status": "not_attempted",
+    "compilation_status": "not_attempted",
+    "artifact_exists": true,
+    "artifact_exists_is_not_reproduction": true,
+    "target": {
+      "paper_anchor": "paper p.3 Table II",
+      "scenario": "3D falling cube",
+      "hardware": "NVIDIA GTX 1080 Ti",
+      "particles": 64000,
+      "forward_ms": 1.594,
+      "backward_ms": 1.774,
+      "required_gradient_check": {
+        "paper_anchor": "paper p.4 Table III",
+        "case": "A2, 1000 steps",
+        "relative_error": 0.0000269
+      }
+    },
+    "missing_evidence": [
+      "exact paper commit and environment",
+      "dt, dx, grid, substeps, materials, and benchmark harness",
+      "current UE5 authoritative multiplayer p99 and determinism data",
+      "explicit commercial integration license"
+    ]
+  }
+}
+```

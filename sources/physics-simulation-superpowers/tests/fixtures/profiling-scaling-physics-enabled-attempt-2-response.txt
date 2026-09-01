@@ -1,0 +1,30 @@
+## Budget and capture contract
+
+- 立刻停止以“138 对 120 FPS”判定 B 物理快 15% 或合并。两次录制条件均不同，平均 FPS 是端到端且受渲染、同步、热状态等影响的混杂指标，不能归因于物理。
+- 保持 gameplay physics 固定 60 Hz。服务器硬门槛为 physics CPU p95 ≤ 3 ms；当前 5.1 ms 只能视为未完成条件下的风险信号，不能作为可比结论。客户端 60 FPS 目标不足够，必须先声明 physics CPU、GPU、内存、尾延迟及容量子预算。
+- 建立版本化 capture manifest，冻结并记录：客户端/服务器权威关系，CPU/GPU/核心数/功耗和热状态，OS/驱动/编译器/build/backend/version，线程/作业/亲和配置，分辨率/相机/VSync/帧率上限，场景/资源/种子/有序输入，网络 RTT/jitter/loss 与 rollback history，热身时长、采样时长、重复次数、置信规则、内存和物理预算、容量/正确性/质量限制。所有当前未声明项都是比较和发布的阻塞项。
+- A、B 必须在相同 manifest、相同热身与运行时长、相同场景种子、相同网络包络、相同后台负载下重录；每次只改变一个因素，并执行相同正确性检查。
+- 每 tick 采集 physics CPU/GPU wall-clock ms 的 p50/p95/p99/max、deadline miss、超预算面积/持续时间、tick backlog、resimulation debt；同时采集每线程/核心时间线、job queue/wait/steal/sync/idle、关键路径、GPU 时间戳/队列占用/传输/CPU-GPU 同步/异步重叠和测量开销。
+- 记录 active/sleeping body 与 shape、broadphase move/pair、narrowphase pair/manifold/contact point、island、constraint row/iteration、CCD candidate/TOI、各类 query 的数量/hit/candidate、callback/event、spawn/despawn、rollback depth/resim tick、分配及峰值/工作集内存、CPU/GPU 阶段计数。
+
+## Attribution and scaling
+
+- 先按粗粒度阶段定位关键路径：input/restore、broadphase、narrowphase/contact generation、island build、constraint solve、integrate/CCD、queries/callbacks、serialization/hash；只对主导阶段继续下钻。
+- 用 `scripts/analyze_physics_trace.py` 对 trace 产出分布与计数证据；按 body、pair、contact、constraint row、query、resim tick 归一化，关联耗时与计数后再单因素实验。相关性或 FPS 变化都不等于因果。
+- 将 A 定义为“不可归因的 FPS-only 基线”；在 B 中禁用“半 iterations、关闭 CCD、4-tick 更新、GPU 全搬迁”等组合改动。B 只能是匹配录制、一个隔离改动、相同不变量与网络检查、完整 CPU/GPU timeline 的实验。
+- 声明并扫描容量与独立负载轴：awake body、broadphase churn、接触密度/manifold point、island 大小与数量、constraint row/条件数、CCD、query mix、spawn/despawn、rollback/resimulation、线程数及目标硬件。覆盖静止/睡眠、pile avalanche、joint chain/motor、CCD swarm、query storm、streaming churn、network-history boundary，报告斜率、拐点、饱和/失衡与尾部行为，不外推。
+- GPU 物理仅作为端到端测量选项：测量 upload/readback、排队、同步、延迟、CPU-GPU 重叠、内存、小工作量 crossover、确定性/权威性、fallback 与正确性矩阵；不得把 GPU 时间隐藏为“物理加速”。
+
+## Reversible quality tiers
+
+- 先完成基线归因，再明确分离 authoritative gameplay physics 与 cosmetic/secondary physics。权威碰撞、solver、CCD、rollback/restore 与事件语义不得被静默降级、剔除或改为按帧 FPS 开关。
+- solver iterations 减半、关闭 CCD、远处 body 每 4 tick 更新的阈值目前均未知；只有经误差对成本、故障/负载扫描证明后，才可作为一次一个的实验。不得把它们组合成未归因的“优化”。
+- 每个质量层级必须声明：适用工作负载、受保护不变量、进入/退出信号、独立测得的阈值、滞回与最短驻留时间、受限的切换工作量、状态映射/守恒、网络权威与事件语义、telemetry、rollback 行为。
+- sleep/cull/LOD/frequency 只可用于已声明的非权威工作；任何 cap/fallback 必须确定性、可观测、可回退。禁止逐帧按 FPS 切换，防止振荡、不可逆状态损失和 gameplay culling。
+
+## Acceptance
+
+- 只有同时具备匹配 manifest、旧/新分布与计数、可复核的瓶颈归因、相同正确性/不变量/网络结果、无隐藏工作迁移，才可声称性能收益。
+- 服务器必须在完整最坏场景矩阵上满足 physics CPU p95 ≤ 3 ms；客户端必须先有声明的 CPU/GPU、内存、tail 与容量预算，并通过矩阵验证。
+- 质量层级须在进入、退出、抖动和 rollback 条件下稳定且可逆；GPU 路径须通过确定性、权威、fallback 与内存矩阵。
+- 拒绝只看平均值、无归因、牺牲正确性、自动振荡或统计不足的结果。出现非有限状态、权威/restore 损坏、缺失 instrumentation、丢弃权威工作、超出安全 cap/budget 或 capture 不兼容时，停止发布。
