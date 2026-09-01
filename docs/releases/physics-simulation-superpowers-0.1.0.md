@@ -41,12 +41,12 @@ Restart Codex, open the Plugins Directory, and install `physics-simulation-super
 The release candidate was checked locally with the repository's required contracts:
 
 - root distribution suite: 20 tests passed;
-- complete physics suite: 623 tests ran on Python 3.11 with 2 intentional skips, and 623 tests ran on Python 3.14 with 1 intentional skip;
+- complete physics suite: 627 tests ran on Python 3.11 with 1 intentional skip, and 627 tests ran on Python 3.14 with 1 intentional skip;
 - physics repository source/release parity: 6 tests passed on both Python 3.11 and Python 3.14;
 - repository validator: both physics plugin roots and all 25 released skills passed;
 - tracked physics JSON validation: 56 files parsed;
 - generated-artifact and public-release symlink-mode checks: no violations;
-- deterministic source/install tree digest after regeneration: `dd907078ead26a0c108de41aa3417c543130890af520eeda04e91c2b7106b94c`.
+- deterministic Windows release-source/install tree digest after regeneration: `6981a689b69729cbcf98ba7cdaf529a8610de4b71bbac606bcb4f0d6002b514d`.
 
 The GitHub Actions workflow independently gates Project Design Keeper, Physics Simulation Superpowers, and the repository distribution. Publication proceeds only after those required checks pass on the pull request.
 
